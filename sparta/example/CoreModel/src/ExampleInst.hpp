@@ -10,6 +10,7 @@
 #include "sparta/simulation/State.hpp"
 #include "sparta/utils/SpartaSharedPointer.hpp"
 #include "sparta/utils/SpartaSharedPointerAllocator.hpp"
+#include "simdb/serialize/Serialize.hpp"
 
 #include <cstdlib>
 #include <ostream>
@@ -235,7 +236,6 @@ namespace core_example
     // inherit publicly from sparta::PairDefinition templatized on the actual class ExampleInst.
     class ExampleInstPairDef : public sparta::PairDefinition<ExampleInst>{
     public:
-
         // The SPARTA_ADDPAIRs APIs must be called during the construction of the PairDefinition class
         ExampleInstPairDef() : PairDefinition<ExampleInst>(){
             SPARTA_INVOKE_PAIRS(ExampleInst);
@@ -250,3 +250,51 @@ namespace core_example
                               SPARTA_ADDPAIR("vaddr",    &ExampleInst::getVAdr, std::ios::hex))
     };
 }
+
+namespace simdb
+{
+
+template <>
+inline void defineEnumMap<core_example::ExampleInst::TargetUnit>(std::string& enum_name, std::map<std::string, uint16_t>& map)
+{
+    using TargetUnit = core_example::ExampleInst::TargetUnit;
+    using etype = std::underlying_type<TargetUnit>::type;
+
+    enum_name = "TargetUnit";
+    map["ALU0"] = static_cast<etype>(TargetUnit::ALU0);
+    map["ALU1"] = static_cast<etype>(TargetUnit::ALU1);
+    map["FPU"]  = static_cast<etype>(TargetUnit::FPU);
+    map["BR"]   = static_cast<etype>(TargetUnit::BR);
+    map["LSU"]  = static_cast<etype>(TargetUnit::LSU);
+    map["ROB"]  = static_cast<etype>(TargetUnit::ROB);
+}
+
+template <>
+inline void defineStructSchema<core_example::ExampleInst>(StructSchema<core_example::ExampleInst>& schema)
+{
+    using TargetUnit = core_example::ExampleInst::TargetUnit;
+
+    schema.addField<uint64_t>("DID");
+    schema.addField<uint64_t>("uid");
+    schema.addString("mnemonic");
+    schema.addBool("complete");
+    schema.addEnum<TargetUnit>("unit");
+    schema.addField<uint32_t>("latency");
+    schema.addHex<uint64_t>("raddr");
+    schema.addHex<uint64_t>("vaddr");
+}
+
+template <>
+inline void writeStructFields<core_example::ExampleInst>(const core_example::ExampleInst* inst, StructFieldSerializer<core_example::ExampleInst>* serializer)
+{
+    serializer->writeField(inst->getUniqueID());
+    serializer->writeField(inst->getUniqueID());
+    serializer->writeField(inst->getMnemonic());
+    serializer->writeField(inst->getCompletedStatus());
+    serializer->writeField(inst->getUnit());
+    serializer->writeField(inst->getExecuteTime());
+    serializer->writeField(inst->getRAdr());
+    serializer->writeField(inst->getVAdr());
+}
+
+} // namespace simdb

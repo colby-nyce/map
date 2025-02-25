@@ -80,8 +80,7 @@ int main ()
     rtn.enterFinalized();
 
 #ifdef PIPEOUT_GEN
-    sparta::collection::PipelineCollector pc("testPipe", 1000000,
-                                           root_clk.get(), &rtn);
+    sparta::collection::PipelineCollector pc("testPipe", 1000000, &rtn);
 #endif
     sched.finalize();
 

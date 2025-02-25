@@ -10,15 +10,18 @@
 
 #pragma once
 
-#include <string>
-#include <inttypes.h>
-
 #include "sparta/simulation/TreeNode.hpp"
-#include "sparta/collection/Collector.hpp"
+
+namespace simdb {
+    class DatabaseManager;
+    class CollectionMgr;
+}
 
 namespace sparta{
 namespace collection
 {
+
+    class PipelineCollector;
 
     /**
      * \class CollectableTreeNode
@@ -62,6 +65,14 @@ namespace collection
         virtual ~CollectableTreeNode()
         {}
 
+        /*!
+         * \brief The pipeline collector will call this method on all nodes
+         * as soon as the collector is created.
+         * 
+         * \return true if we should recurse, false otherwise
+         */
+        virtual void configCollectable(simdb::CollectionMgr *) = 0;
+
         /**
          * \brief Method that tells this treenode that is now running
          *        collection.
@@ -71,18 +82,17 @@ namespace collection
          * treenode necessary to collection as well as flip the
          * is_collecting boolean.
          */
-        void startCollecting(Collector * collector) {
+        void startCollecting(PipelineCollector* collector, simdb::DatabaseManager* db_mgr) {
             is_collected_ = true;
-            setCollecting_(true, collector);
+            setCollecting_(true, collector, db_mgr);
         }
 
         /**
          * \brief Method that tells this treenode that is now not
          * running collection.
          */
-        void stopCollecting(Collector * collector)
-        {
-            setCollecting_(false, collector);
+        void stopCollecting(PipelineCollector* collector, simdb::DatabaseManager* db_mgr) {
+            setCollecting_(false, collector, db_mgr);
             is_collected_ = false;
         }
 
@@ -95,12 +105,6 @@ namespace collection
         //! Pure virtual method used by deriving classes to be
         //! notified when they can perform their collection
         virtual void collect() = 0;
-
-        //! Pure virtual method used by deriving classes to re-start a
-        //! record if necessary.  This is mostly used by
-        //! PipelineCollector where it will insert a heartbeat index
-        //! by closing all records and opening them again.
-        virtual void restartRecord() {}
 
         //! Pure virtual method used by deriving classes to force
         //! close a record.  This is useful for simulation end where
@@ -118,7 +122,7 @@ namespace collection
          * \brief Indicate to sub-classes that collection has flipped
          * \param collect true if collection is enabled; false otherwise
          */
-        virtual void setCollecting_(bool collect, Collector *) { (void) collect; }
+        virtual void setCollecting_(bool collect, PipelineCollector*, simdb::DatabaseManager*) { (void)collect; }
 
     private:
 
