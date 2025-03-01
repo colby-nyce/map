@@ -376,6 +376,11 @@ CommandLineSimulator::CommandLineSimulator(const std::string& usage,
         ("heartbeat",
          named_value<uint64_t>("HEARTBEAT", &pipeline_heartbeat_)->default_value(pipeline_heartbeat_),
          heartbeat_doc.str().c_str())
+        ("pipeline-num-compression-threads",
+         named_value<uint64_t>("PIPELINE_MAX_ZLIB_THREADS", &pipeline_num_compression_threads_)->default_value(pipeline_num_compression_threads_),
+         "The number of threads to use for compressing data before writing to the database. ")
+        ("log-pipeline-minification",
+         "Enable logging of minification statistics for pipeline collection")
         ;
 
     std::stringstream arch_search_dirs_str;
@@ -1772,6 +1777,10 @@ bool CommandLineSimulator::parse(int argc,
         if (!fs_path.has_extension() || fs_path.extension() != ".db") {
             simdb_filename += ".db";
         }
+
+        if (vm_.count("log-pipeline-minification") > 0) {
+            simdb::CollectionPointBase::enableMinificationLogging();
+        }
     }
 
     //pevents
@@ -2031,7 +2040,8 @@ void CommandLineSimulator::populateSimulation_(Simulation* sim)
                                                                        pipeline_enabled_node_names_,
                                                                        pipeline_heartbeat_,
                                                                        multiple_triggers,
-                                                                       sim->getRoot()));
+                                                                       sim->getRoot(),
+                                                                       pipeline_num_compression_threads_));
         }
 
         // Finalize the pevent controller now that the tree is built.

@@ -33,14 +33,15 @@ public:
                     const std::set<std::string>& pipeline_enabled_node_names,
                     uint64_t pipeline_heartbeat,
                     bool multiple_triggers,
-                    sparta::RootTreeNode * rtn) :
+                    sparta::RootTreeNode * rtn,
+                    size_t pipeline_num_compression_threads = 2) :
         pipeline_collection_path_(pipeline_collection_path),
         pipeline_enabled_node_names_(pipeline_enabled_node_names),
         multiple_triggers_(multiple_triggers),
         root_(rtn)
     {
         auto simdb_filename = getCollectionPath_();
-        pipeline_collector_.reset(new sparta::collection::PipelineCollector(simdb_filename, pipeline_heartbeat, rtn));
+        pipeline_collector_.reset(new sparta::collection::PipelineCollector(simdb_filename, pipeline_heartbeat, rtn, pipeline_num_compression_threads));
     }
 
     void go() override

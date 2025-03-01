@@ -80,6 +80,7 @@ namespace collection
                 ev_collect_->setScheduleableClock(clk);
                 ev_collect_->setScheduler(clk->getScheduler());
                 ev_collect_->setContinuing(false);
+                scheduler_ = ev_collect_->getScheduler();
             }
 
             void enable(CollectableTreeNode * ctn) {
@@ -98,6 +99,14 @@ namespace collection
             }
 
             void performCollection() {
+                const auto tick = scheduler_->getCurrentTick();
+                performCollectionAt_(tick - 1);
+            }
+
+        private:
+            void performCollectionAt_(sparta::Scheduler::Tick tick) {
+                if (LOG_MINIFICATION) std::cout << "\n\n[simdb verbose] Performing collection at tick " << tick << "\n";
+
                 for(auto & ctn : enabled_ctns_) {
                     if(ctn->isCollected()) {
                         //This is happening on a specific clock and a specific phase.
@@ -115,10 +124,10 @@ namespace collection
                 }
             }
 
-        private:
             EventSet ev_set_;
             std::unique_ptr<sparta::Scheduleable> ev_collect_;
             std::set<CollectableTreeNode*> enabled_ctns_;
+            sparta::Scheduler* scheduler_ = nullptr;
         };
 
         // A map of the clock pointer and the structures that
@@ -133,7 +142,8 @@ namespace collection
     public:
         PipelineCollector(const std::string& simdb_filename,
                           const size_t heartbeat,
-                          sparta::TreeNode * root)
+                          sparta::TreeNode * root,
+                          size_t num_compression_threads = 2)
             : db_mgr_(std::make_unique<simdb::DatabaseManager>(simdb_filename, true))
         {
             sparta_assert(root->isFinalized() == true,
@@ -152,7 +162,7 @@ namespace collection
             // DatabaseManager adds automatically to support this feature.
             simdb::Schema schema;
             db_mgr_->createDatabaseFromSchema(schema);
-            db_mgr_->enableCollection(heartbeat);
+            db_mgr_->enableCollection(heartbeat, num_compression_threads);
 
             // Initialize the clock/collectable map
             std::function<void (const sparta::Clock*)> addClks;

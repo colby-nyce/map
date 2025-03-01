@@ -461,6 +461,11 @@ protected:
      */
     uint64_t pipeline_heartbeat_ = 10;
 
+    /*!
+     * \brief Maximum number of compression threads to use for pipeline collection.
+     */
+    size_t pipeline_num_compression_threads_ = 2;
+
     //! The names of the nodes to be enabled
     std::set<std::string> pipeline_enabled_node_names_;
 
