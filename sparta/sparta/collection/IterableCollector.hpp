@@ -47,7 +47,7 @@ namespace collection {
  * class will output a warning message (only once).
  */
 template <typename IterableType, SchedulingPhase collection_phase = SchedulingPhase::Collection, bool sparse_array_type = false>
-class IterableCollector : public CollectableTreeNode
+class IterableCollector : public CollectableTreeNode, public simdb::TickReader
 {
 public:
     typedef typename IterableType::size_type size_type;
@@ -196,6 +196,14 @@ public:
         setManualCollection();
     }
 
+    uint64_t getTick() const override {
+        return getClock()->getScheduler()->getCurrentTick() - 1;
+    }
+
+    uint16_t getElemId() const override {
+        return simdb_collectable_->getElemId();
+    }
+
     //! \brief Do not perform any automatic collection
     //! The SchedulingPhase is ignored
     void setManualCollection() {
@@ -258,6 +266,12 @@ public:
             getLocation(),
             getClock()->getName(),
             expected_capacity_);
+
+        simdb_collectable_->setTickReader(*this);
+    }
+
+    simdb::CollectionPointBase* getSimDbCollectable() const override {
+        return simdb_collectable_.get();
     }
 
 private:
@@ -279,6 +293,14 @@ private:
         void collect() override final
         {
             // Nothing to do here
+        }
+
+        uint16_t getElemId() const override {
+            return 0;
+        }
+
+        simdb::CollectionPointBase* getSimDbCollectable() const override {
+            return nullptr;
         }
     };
 

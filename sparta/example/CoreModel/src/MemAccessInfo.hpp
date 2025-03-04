@@ -191,6 +191,11 @@ inline void defineStructSchema<core_example::MemoryAccessInfo>(StructSchema<core
     schema.addBool("valid");
     schema.addEnum<core_example::MemoryAccessInfo::MMUState>("mmu");
     schema.addEnum<core_example::MemoryAccessInfo::CacheState>("cache");
+
+    //TODO cnyce
+    //StructSchema<core_example::ExampleInst> ex_inst_schema;
+    //defineStructSchema<core_example::ExampleInst>(ex_inst_schema);
+    //schema.stealFieldsFrom(ex_inst_schema);
 }
 
 template <>
@@ -203,8 +208,9 @@ inline void writeStructFields<core_example::MemoryAccessInfo>(
     serializer->writeField(inst->getMMUState());
     serializer->writeField(inst->getCacheState());
 
-    core_example::ExampleInst* ex_inst = inst->getInstPtr().get();
-    StructSerializer<core_example::ExampleInst>::getInstance()->writeStruct(ex_inst, serializer->getBuffer());
+    //TODO cnyce
+    //core_example::ExampleInst* ex_inst = inst->getInstPtr().get();
+    //StructSerializer<core_example::ExampleInst>::getInstance()->writeStruct(ex_inst, serializer->getBuffer());
 }
 
 } // namespace simdb

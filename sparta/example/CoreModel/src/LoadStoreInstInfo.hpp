@@ -163,6 +163,11 @@ inline void defineStructSchema<core_example::LoadStoreInstInfo>(StructSchema<cor
     schema.addField<uint64_t>("DID");
     schema.addEnum<core_example::LoadStoreInstInfo::IssuePriority>("rank");
     schema.addEnum<core_example::LoadStoreInstInfo::IssueState>("state");
+
+    //TODO cnyce
+    //StructSchema<core_example::MemoryAccessInfo> mem_access_info_schema;
+    //defineStructSchema<core_example::MemoryAccessInfo>(mem_access_info_schema);
+    //schema.stealFieldsFrom(mem_access_info_schema);
 }
 
 template <>
@@ -174,8 +179,9 @@ inline void writeStructFields<core_example::LoadStoreInstInfo>(
     serializer->writeField(inst->getPriority());
     serializer->writeField(inst->getState());
 
-    core_example::MemoryAccessInfo* mem_access_info = inst->getMemoryAccessInfoPtr().get();
-    StructSerializer<core_example::MemoryAccessInfo>::getInstance()->writeStruct(mem_access_info, serializer->getBuffer());
+    //TODO cnyce
+    //core_example::MemoryAccessInfo* mem_access_info = inst->getMemoryAccessInfoPtr().get();
+    //StructSerializer<core_example::MemoryAccessInfo>::getInstance()->writeStruct(mem_access_info, serializer->getBuffer());
 }
 
 } // namespace simdb

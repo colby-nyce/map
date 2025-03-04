@@ -105,9 +105,8 @@ namespace collection
 
         private:
             void performCollectionAt_(sparta::Scheduler::Tick tick) {
-                if (LOG_MINIFICATION) std::cout << "\n\n[simdb verbose] Performing collection at tick " << tick << "\n";
-
-                for(auto & ctn : enabled_ctns_) {
+                (void)tick;
+                for(auto ctn : enabled_ctns_) {
                     if(ctn->isCollected()) {
                         //This is happening on a specific clock and a specific phase.
                         //We need to honor the collectable value at this very time,
@@ -231,6 +230,24 @@ namespace collection
          */
         void destroy()
         {
+            if (!auto_collected_paths_.empty()) {
+                db_mgr_->safeTransaction([&](){
+                    // TODO cnyce - 1st class API for UPDATE
+                    std::ostringstream oss;
+                    oss << "UPDATE CollectableTreeNodes SET AutoCollected = 1 WHERE Location IN (";
+                    for (size_t idx = 0; idx < auto_collected_paths_.size(); ++idx) {
+                        oss << "'" << auto_collected_paths_[idx] << "'";
+                        if (idx != auto_collected_paths_.size() - 1) {
+                            oss << ",";
+                        }
+                    }
+                    oss << ")";
+
+                    db_mgr_->executeSQL(oss.str());
+                    return true;
+                });
+            }
+
             db_mgr_->postSim();
 
             if(collection_active_) {
@@ -352,7 +369,7 @@ namespace collection
             auto ccm_pair = clock_ctn_map_.find(ctn->getClock());
             sparta_assert(ccm_pair != clock_ctn_map_.end());
             ccm_pair->second[static_cast<uint32_t>(collection_phase)]->enable(ctn);
-            addToAutoSweep(ctn);
+            addToAutoSweep_(ctn, true);
         }
 
         /**
@@ -378,11 +395,7 @@ namespace collection
 
         void addToAutoSweep(CollectableTreeNode * ctn)
         {
-            auto& sweep = sweepers_[ctn->getClock()];
-            if (!sweep) {
-                sweep.reset(new ClockDomainSweeper(db_mgr_->getCollectionMgr(), ctn->getClock()));
-            }
-            sweep->enable(ctn);
+            addToAutoSweep_(ctn, false);
         }
 
         void removeFromAutoSweep(CollectableTreeNode * ctn)
@@ -452,6 +465,21 @@ namespace collection
             sparta::UniqueEvent<SchedulingPhase::PostTick> ev_sweep_;
         };
 
+        void addToAutoSweep_(CollectableTreeNode * ctn, bool is_auto_collected)
+        {
+            auto& sweep = sweepers_[ctn->getClock()];
+            if (!sweep) {
+                sweep.reset(new ClockDomainSweeper(db_mgr_->getCollectionMgr(), ctn->getClock()));
+            }
+            sweep->enable(ctn);
+
+            ctn->getSimDbCollectable()->setAutoCollect(is_auto_collected);
+
+            if (is_auto_collected) {
+                auto_collected_paths_.push_back(ctn->getLocation());
+            }
+        }
+
         //! The SimDB database
         std::unique_ptr<simdb::DatabaseManager> db_mgr_;
 
@@ -463,6 +491,9 @@ namespace collection
 
         //! Actively auto-sweeping nodes
         std::unordered_map<const Clock*, std::unique_ptr<ClockDomainSweeper>> sweepers_;
+
+        //! All element paths for auto-collected collectables.
+        std::vector<std::string> auto_collected_paths_;
     };
 
 }// namespace collection

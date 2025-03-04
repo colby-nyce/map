@@ -15,6 +15,7 @@
 namespace simdb {
     class DatabaseManager;
     class CollectionMgr;
+    class CollectionPointBase;
 }
 
 namespace sparta{
@@ -73,6 +74,8 @@ namespace collection
          */
         virtual void configCollectable(simdb::CollectionMgr *) = 0;
 
+        virtual uint16_t getElemId() const = 0;
+
         /**
          * \brief Method that tells this treenode that is now running
          *        collection.
@@ -115,6 +118,8 @@ namespace collection
         //!        to their end cycle in their records to ensure it
         //!        does not get closed out.
         virtual void closeRecord(const bool & simulation_ending = false) { (void) simulation_ending; }
+
+        virtual simdb::CollectionPointBase* getSimDbCollectable() const = 0;
 
     protected:
 

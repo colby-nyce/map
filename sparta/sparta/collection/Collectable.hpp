@@ -43,7 +43,7 @@ namespace sparta{
          */
 
         template<typename DataT, SchedulingPhase collection_phase = SchedulingPhase::Collection, typename = void>
-        class Collectable : public CollectableTreeNode
+        class Collectable : public CollectableTreeNode, public simdb::TickReader
         {
         public:
             /**
@@ -103,6 +103,14 @@ namespace sparta{
 
             //! Virtual destructor -- does nothing
             virtual ~Collectable() {}
+
+            uint64_t getTick() const override {
+                return getClock()->getScheduler()->getCurrentTick() - 1;
+            }
+
+            uint16_t getElemId() const override {
+                return simdb_collectable_->getElemId();
+            }
 
             //! Explicitly/manually collect a value for this collectable, ignoring
             //! what the Collectable is currently pointing to.
@@ -227,6 +235,11 @@ namespace sparta{
             void configCollectable(simdb::CollectionMgr *mgr) override final {
                 using value_type = MetaStruct::remove_any_pointer_t<DataT>;
                 simdb_collectable_ = mgr->createCollectable<value_type>(getLocation(), getClock()->getName());
+                simdb_collectable_->setTickReader(*this);
+            }
+
+            simdb::CollectionPointBase* getSimDbCollectable() const override {
+                return simdb_collectable_.get();
             }
 
         protected:
