@@ -15,54 +15,17 @@
 #include "sparta/simulation/Clock.hpp"
 #include "sparta/utils/SpartaAssert.hpp"
 #include "sparta/collection/CollectableTreeNode.hpp"
-#include "sparta/collection/Collector.hpp"
 #include "sparta/events/EventSet.hpp"
 #include "sparta/events/UniqueEvent.hpp"
 #include "sparta/events/GlobalOrderingPoint.hpp"
 #include "sparta/kernel/Scheduler.hpp"
-
-#include "sparta/pipeViewer/Outputter.hpp"
-#include "sparta/pipeViewer/ClockFileWriter.hpp"
-#include "sparta/pipeViewer/LocationFileWriter.hpp"
 #include "sparta/simulation/TreeNodePrivateAttorney.hpp"
+#include "simdb/sqlite/DatabaseManager.hpp"
 
-namespace sparta{
+namespace sparta {
 namespace collection
 {
-    /**
-     * \class PipelineCollector
-     *
-     * \brief A class that facilitates all universal pipeline
-     *        collection operations such as outputting finalized
-     *        records, generating unique transaction Id's, maintaining
-     *        heartbeat functionality, writing the location file,
-     *        writing the clock file.
-     *
-     * The class must be initialized with
-     * PipelineCollector::getPipelineCollector()->init(...)  before
-     * collection is to occure. This method is required to have
-     * important parameters required during pipeline collection.
-     *
-     * This class operates on a specific scheduler specified at construction.
-     * It's implementation should not access the sparta Scheduler singleton
-     * directly.
-     *
-     * destroy() should also be called at the end of the programs life
-     * to perform post collection maintenance. Any transactions alive
-     * at this point will have their current data written to disk with
-     * the end time as the end time of simulation. If the singleton
-     * was never initialized, destroy will have no effect.
-     *
-     * Once the singleton is created and initialized with init
-     * pipeline collection still needs to be switched on. This can be
-     * done via the startCollection() at the treenode level. This
-     * method recursively turns on collection at and below the
-     * treenode pointer passed in.
-     *
-     * Likewise collection can be turned off via stopCollection at any
-     * time.
-     */
-    class PipelineCollector : public Collector
+    class PipelineCollector
     {
         class CollectablesByClock
         {
@@ -117,6 +80,7 @@ namespace collection
                 ev_collect_->setScheduleableClock(clk);
                 ev_collect_->setScheduler(clk->getScheduler());
                 ev_collect_->setContinuing(false);
+                scheduler_ = ev_collect_->getScheduler();
             }
 
             void enable(CollectableTreeNode * ctn) {
@@ -135,13 +99,22 @@ namespace collection
             }
 
             void performCollection() {
-                // std::for_each(enabled_ctns_.begin(),
-                //               enabled_ctns_.end(), [&](CollectableTreeNode * it) {
-                //                   std::cout << it->getName() << " " << ev_collect_.getClock()->currentCycle() << std::endl;
-                //               });
+                const auto tick = scheduler_->getCurrentTick();
+                performCollectionAt_(tick - 1);
+            }
 
-                for(auto & ctn : enabled_ctns_) {
+        private:
+            void performCollectionAt_(sparta::Scheduler::Tick tick) {
+                (void)tick;
+                for(auto ctn : enabled_ctns_) {
                     if(ctn->isCollected()) {
+                        //This is happening on a specific clock and a specific phase.
+                        //We need to honor the collectable value at this very time,
+                        //even though the actual sweep() does not occur until PostTick.
+                        //
+                        //This only has an effect for automatically collected types.
+                        //Manually collected types always ignore the phase and collect
+                        //immediately.
                         ctn->collect();
                     }
                 }
@@ -150,16 +123,10 @@ namespace collection
                 }
             }
 
-            void print() {
-                for(auto ctn : enabled_ctns_) {
-                    std::cout << '\t' << ctn->getName() << std::endl;
-                }
-            }
-        private:
             EventSet ev_set_;
-
             std::unique_ptr<sparta::Scheduleable> ev_collect_;
             std::set<CollectableTreeNode*> enabled_ctns_;
+            sparta::Scheduler* scheduler_ = nullptr;
         };
 
         // A map of the clock pointer and the structures that
@@ -172,72 +139,36 @@ namespace collection
         std::set<CollectableTreeNode*> registered_collectables_;
 
     public:
-
-        /**
-         * \brief Instantiate the collector with required parameters before
-         *         pipeline collection can occur.
-         * \param filepath The relative path to the output directory or file prefix.
-         * \param heartbeat_interval The interval offset at which to write an
-         * index file (in Ticks). If 0, the heartbeat will be derived from the
-         * known clocks in the simulation.
-         * \param root_clk A pointer to the clock that maintains the hyper
-         *                 cycle time.
-         * \param root A pointer to the root sparta::TreeNode during
-         *             simulation which will be walked when producing
-         *             a location map file that maps location id
-         *             numbers with the sparta tree location for
-         *             collected objects.
-         * \param scheduler Scheduler on which this collector operates. If null,
-         * uses the Scheduler belonging to root_clk. This allows us to
-         * run different pipeline collectors on different schedulers
-         * which is useful for standalone analyzers which run multiple
-         * instances of some model in parallel over the same trace data
-         *
-         * \warning If filepath is a directory, the directory must
-         *          already exist.
-         * \pre The sparta tree must be finalized.
-         * \note This method does NOT start collection. To start
-         *       collection, call startCollection
-         *
-         */
-        PipelineCollector(const std::string& filepath, Scheduler::Tick heartbeat_interval,
-                          const sparta::Clock* root_clk, const sparta::TreeNode* root,
-                          Scheduler* scheduler=nullptr) :
-            Collector("PipelineCollector"),
-            scheduler_(scheduler != nullptr ? scheduler : root_clk->getScheduler()),
-            collector_events_(nullptr),
-            ev_heartbeat_(&collector_events_, Collector::getName() + "_heartbeat_event",
-                          CREATE_SPARTA_HANDLER(PipelineCollector, performHeartBeat_), 0)
+        PipelineCollector(const std::string& simdb_filename,
+                          const size_t heartbeat,
+                          sparta::TreeNode * root,
+                          size_t num_compression_threads = 2)
+            : db_mgr_(std::make_unique<simdb::DatabaseManager>(simdb_filename, true))
         {
-            // Sanity check - pipeline collection cannot occur without a scheduler
-            sparta_assert(scheduler_);
+            sparta_assert(root->isFinalized() == true,
+                          "Pipeline collection cannot be constructed until the sparta tree has been finalized.");
 
-            ev_heartbeat_.setScheduleableClock(root_clk);
-            ev_heartbeat_.setScheduler(scheduler_);
+            sparta_assert(root->getClock() != nullptr,
+                          "Cannot construct PipelineCollector because root clock is a nullptr");
 
-            // We need to reverse the dependency order for the PostTick GOP and ev_heartbeat_ so that every other
-            // event happens *before* ev_heartbeat_.
-            // Doing this ensures that we don't accidentally mark a 1-cycle transaction as continued.
-            DAG* dag = scheduler_->getDAG(); // Get a handle to the DAG
-            sparta_assert(dag);
-            Vertex* post_tick_gop = dag->getGOPoint("PostTick"); // Get a handle to the PostTick GOP
-            sparta_assert(post_tick_gop);
+            sparta_assert(root->getClock()->getScheduler()->isFinalized() == false,
+                          "Pipeline Collection cannot be instantiated after scheduler finalization");
 
-            dag->unlink(ev_heartbeat_.getVertex(), post_tick_gop); // Undo the ev_heartbeat_ >> heartbeat_gop link
-            post_tick_gop->precedes(ev_heartbeat_); // Set post_tick_gop >> heartbeat_gop
+            scheduler_ = root->getClock()->getScheduler();
 
-            sparta_assert(root != nullptr, "Pipeline Collection will not be able to create location file because it was passed a nullptr root treenode.");
-            sparta_assert(root->isFinalized(), "Pipeline collection cannot be constructed until the sparta tree has been finalized.");
-            // Assert that we got valid pointers necessary for pipeline collection.
-            sparta_assert(root_clk != nullptr, "Cannot construct PipelineCollector because root clock is a nullptr");
-            sparta_assert(scheduler_->isFinalized() == false, "Pipeline Collection cannot be instantiated after scheduler finalization -- it creates events");
+            // Note that we only care about the collection data and have
+            // no need for any other tables, aside from the tables that the
+            // DatabaseManager adds automatically to support this feature.
+            simdb::Schema schema;
+            db_mgr_->createDatabaseFromSchema(schema);
+            db_mgr_->enableCollection(heartbeat, num_compression_threads);
 
-            // Initialize the clock/collectable map and find the fastest clock
-            const sparta::Clock* fastest_clk = nullptr;
+            // Initialize the clock/collectable map
             std::function<void (const sparta::Clock*)> addClks;
-            addClks = [&addClks, this, &fastest_clk] (const sparta::Clock* clk)
+            addClks = [&addClks, this] (const sparta::Clock* clk)
                 {
                     if(clk != nullptr){
+                        db_mgr_->getCollectionMgr()->addClock(clk->getName(), clk->getPeriod());
                         auto & u_p = clock_ctn_map_[clk];
                         for(uint32_t i = 0; i < NUM_SCHEDULING_PHASES; ++i) {
                             u_p[i].reset(new CollectablesByClock(clk, static_cast<SchedulingPhase>(i)));
@@ -245,53 +176,44 @@ namespace collection
                         for(const sparta::TreeNode* child : sparta::TreeNodePrivateAttorney::getAllChildren(clk)) {
                             const sparta::Clock* child_clk = dynamic_cast<const sparta::Clock*>(child);
                             if(child_clk){
-                                auto clk_period = child_clk->getPeriod();
-                                // If this clock has a non-1 period (i.e. not the root clock)
-                                // AND there is either
-                                //   (A) no fastest clock yet
-                                //    or
-                                //   (B) this clock is a higher frequency than the fastest clock.
-                                // then choose this as the fastest
-                                if(clk_period != 1 && (!fastest_clk || (clk_period < fastest_clk->getPeriod()))) {
-                                    fastest_clk = child_clk;
-                                }
                                 addClks(child_clk);
                             }
                         }
                     }
                 };
-            addClks(root_clk);
-            if(fastest_clk == nullptr){
-                fastest_clk = root_clk;
-            }
 
-            // A multiple to multiply against the fastest clock when no heartbeat was set.
-            //! \todo The multiplier should also be scaled slightly by the number of locations
-            //! registered in order to better estimate the ideal heartbeat size.
-            static const uint32_t heartbeat_multiplier = 200;
-            // round heartbeat using a multiple of the fastest clock if one was not set.
-            if (heartbeat_interval == 0)
-            {
-                sparta_assert(fastest_clk->getPeriod() != 0);
-                heartbeat_interval = fastest_clk->getPeriod() * heartbeat_multiplier;                //round up to the nearest multiple of 100
-                heartbeat_interval = heartbeat_interval + (100 - (heartbeat_interval % 100));
-                // pipeViewer requires that intervals be a multiple of 100.
-                sparta_assert(heartbeat_interval % 100 == 0)
-            }
+            addClks(root->getClock());
 
-            // We are gonna subtract one from the heartbeat_interval
-            // later.. Better be greater than one.
-            sparta_assert(heartbeat_interval > 1);
-            // Initialize some values.
-            filepath_           = filepath;
-            heartbeat_interval_ = heartbeat_interval;
-            closing_time_       = heartbeat_interval;
-            root_clk_           = root_clk;
+            std::queue<sparta::TreeNode*> q;
+            std::unordered_set<sparta::TreeNode*> visited;
+            q.push(root);
 
-            ev_heartbeat_.setContinuing(false); // This event does not keep simulation going
+            db_mgr_->safeTransaction([&](){
+                while (!q.empty()) {
+                    auto node = q.front();
+                    q.pop();
+
+                    if (!visited.insert(node).second) {
+                        continue;
+                    }
+
+                    if (auto ctn = dynamic_cast<CollectableTreeNode*>(node)) {
+                        ctn->configCollectable(db_mgr_->getCollectionMgr());
+                    } else {
+                        for (auto child : sparta::TreeNodePrivateAttorney::getAllChildren(node)) {
+                            q.push(child);
+                        }
+                    }
+                }
+
+                db_mgr_->finalizeCollections();
+                return true;
+            });
         }
 
         ~PipelineCollector() {
+            db_mgr_->closeDatabase();
+
             // XXX This is a little goofy looking.  Should we make sparta_abort that takes conditional
             //    be sparta_abort_unless()?
             sparta_abort(collection_active_ != true,
@@ -308,24 +230,49 @@ namespace collection
          */
         void destroy()
         {
+            if (!auto_collected_paths_.empty()) {
+                db_mgr_->safeTransaction([&](){
+                    // TODO cnyce - 1st class API for UPDATE
+                    std::ostringstream oss;
+                    oss << "UPDATE CollectableTreeNodes SET AutoCollected = 1 WHERE Location IN (";
+                    for (size_t idx = 0; idx < auto_collected_paths_.size(); ++idx) {
+                        oss << "'" << auto_collected_paths_[idx] << "'";
+                        if (idx != auto_collected_paths_.size() - 1) {
+                            oss << ",";
+                        }
+                    }
+                    oss << ")";
+
+                    db_mgr_->executeSQL(oss.str());
+                    return true;
+                });
+            }
+
+            db_mgr_->postSim();
+
             if(collection_active_) {
-                sparta_assert(writer_ != nullptr, "Somehow collection is active, but we have a null writer");
                 for(auto & ctn : registered_collectables_) {
                     if(ctn->isCollected()) {
                         ctn->closeRecord(true); // set true for simulation termination
                     }
                 }
             }
+
             registered_collectables_.clear();
-            writer_.reset();
             collection_active_ = false;
         }
 
-        void reactivate(const std::string& filepath)
+        void reactivate(const std::string& simdb_filename)
         {
-            sparta_assert(!collection_active_,
-                          "You can only reactivate the PipelineCollector after you destroy it");
-            filepath_ = filepath;
+            sparta_assert(simdb_filename.find(".db") != std::string::npos,
+                          "Database filename must end in .db");
+
+            sparta_assert(false, "TODO cnyce: Not implemented");
+
+            if (db_mgr_) {
+                db_mgr_->closeDatabase();
+                db_mgr_.reset();
+            }
         }
 
         /**
@@ -340,48 +287,8 @@ namespace collection
          * \note The Scheduler MUST be finalized before this method is
          * called
          */
-        void startCollection(sparta::TreeNode* starting_node)
+        void startCollection(TreeNode* starting_node)
         {
-            if(collection_active_ == false)
-            {
-                // Create the outputter used for writing transactions to disk.
-                writer_.reset(new pipeViewer::Outputter(filepath_, heartbeat_interval_));
-
-                // We need to write an index on the start BEFORE any transactions have been written.
-                writer_->writeIndex();
-
-                // Write the clock information out
-                writeClockFile_();
-
-                // Open the locations file
-                location_writer_.reset(new pipeViewer::LocationFileWriter(filepath_));
-
-                // The reader needs heartbeat indexes up to the current
-                // collection point.  This can happen on delayed pipeline
-                // collection.  Start the heartbeats at the first interval
-                // as the Outputter class handles hb 0
-                last_heartbeat_ = 0;
-                const uint64_t num_hb = scheduler_->getCurrentTick()/heartbeat_interval_;
-                uint64_t cnt = 0;
-                while(cnt != num_hb) {
-                    // write an index
-                    writer_->writeIndex();
-                    last_heartbeat_ += heartbeat_interval_;
-                    ++cnt;
-                }
-
-                // Schedule a heartbeat at the next interval, offset from
-                // the current tick.  For example, if the scheduler is at
-                // 6,600,456, then we want to schedule at 7,000,000 if the
-                // interval is 1M and the num_hb is 6
-                ev_heartbeat_.scheduleRelativeTick(((num_hb + 1) * heartbeat_interval_) -
-                                                   scheduler_->getCurrentTick(), scheduler_);
-
-                collection_active_ = true;
-            }
-
-            *(location_writer_.get()) << (*starting_node);
-
             // Recursively collect the start node and children
             std::function<void (sparta::TreeNode* starting_node)> recursiveCollect;
             recursiveCollect = [&recursiveCollect, this] (sparta::TreeNode* starting_node)
@@ -389,7 +296,7 @@ namespace collection
                     // First turn on this node if it's actually a CollectableTreeNode
                     CollectableTreeNode* c_node = dynamic_cast<CollectableTreeNode*>(starting_node);
                     if(c_node != nullptr) {
-                        c_node->startCollecting(this);
+                        c_node->startCollecting(this, db_mgr_.get());
                         registered_collectables_.insert(c_node);
                     }
 
@@ -417,7 +324,7 @@ namespace collection
                 CollectableTreeNode* c_node = dynamic_cast<CollectableTreeNode*>(starting_node);
                 if(c_node != nullptr)
                 {
-                    c_node->stopCollecting(this);
+                    c_node->stopCollecting(this, db_mgr_.get());
                     registered_collectables_.erase(c_node);
                 }
 
@@ -429,14 +336,7 @@ namespace collection
             };
             recursiveStopCollect(starting_node);
 
-            bool still_active = !registered_collectables_.empty();
-            // for(auto & cp : clock_ctn_map_) {
-            //     if(cp.second->anyCollected()) {
-            //         still_active = true;
-            //         break;
-            //     }
-            // }
-            collection_active_ = still_active;
+            collection_active_ = !registered_collectables_.empty();
         }
 
         /**
@@ -446,7 +346,7 @@ namespace collection
          */
         void stopCollection() {
             for(auto & col : registered_collectables_) {
-                col->stopCollecting(this);
+                col->stopCollecting(this, db_mgr_.get());
             }
             registered_collectables_.clear();
         }
@@ -469,6 +369,7 @@ namespace collection
             auto ccm_pair = clock_ctn_map_.find(ctn->getClock());
             sparta_assert(ccm_pair != clock_ctn_map_.end());
             ccm_pair->second[static_cast<uint32_t>(collection_phase)]->enable(ctn);
+            addToAutoSweep_(ctn, true);
         }
 
         /**
@@ -489,86 +390,28 @@ namespace collection
             for(auto & u_p : ccm_pair->second) {
                 u_p->disable(ctn);
             }
+            removeFromAutoSweep(ctn);
         }
 
-        /**
-         * \brief Return a unique transaction id using a dummy counter
-         */
-        uint64_t getUniqueTransactionId()
+        void addToAutoSweep(CollectableTreeNode * ctn)
         {
-            // make sure we are not going to overflow our int,
-            // if we did overflow our id's are no longer unique!
-            sparta_assert(last_transaction_id_ < (~(uint64_t)0));
-            return ++last_transaction_id_;
+            addToAutoSweep_(ctn, false);
         }
 
-        /**
-         * \brief Output a finized transaction to our Outputter class.
-         * \param dat The transaction to be outputted.
-         * \param R_Type the type of transaction struct
-         */
-        template<class R_Type>
-        void writeRecord(const R_Type& dat)
+        void removeFromAutoSweep(CollectableTreeNode * ctn)
         {
-            sparta_assert(collection_active_, "The pipeline head must be running in order to write a transaction");
+            auto iter = sweepers_.find(ctn->getClock());
+            if (iter == sweepers_.end()) {
+                return;
+            }
 
-            // Make sure it's within the heartbeat window
-            sparta_assert(dat.time_End <= (last_heartbeat_ + heartbeat_interval_));
-            sparta_assert(dat.time_Start >= last_heartbeat_);
-
-
-            // Make sure transactions are exclusive.
-            // transaction [4999-5000] should be written BEFORE the index is written for transactions
-            // starting at 5000
-            sparta_assert(closing_time_ < heartbeat_interval_  // Ignore first heartbeat
-                              || dat.time_Start >= closing_time_ - heartbeat_interval_,
-                              "Attempted to write a pipeout record with exclusive start =("
-                              << dat.time_Start << "), less than closing of previous interval"
-                              << closing_time_ - heartbeat_interval_ );
-
-            // std::cout << "writing annt. " << "loc: " << dat.location_ID << " start: "
-            //           << dat.time_Start << " end: " << dat.time_End
-            //           << " parent: " << dat.parent_ID << std::endl;
-
-            writer_->writeTransaction<R_Type>(dat);
-            ++transactions_written_;
-        }
-
-        /**
-         * \brief Return the number of transactions that this singleton
-         * has passed to it's output. This is useful for testing purposes.
-         */
-        uint64_t numTransactionsWritten() const
-        {
-            return transactions_written_;
-        }
-
-        /**
-         * \brief Return true if the collector is actively collecting
-         *
-         *  Will be true if there are any registered collectables that
-         *  are being collected on any clock.
-         *
-         * \note This method should not be used to determine whether
-         *       pipeline collection is running at a specific tree
-         *       node location.
-         */
-        bool isCollectionActive() const {
-            return collection_active_;
-        }
-
-        void printMap() {
-            //std::cout << "Printing Map Not Supported" << std::endl;
-            // for(auto & p : clock_ctn_map_) {
-            //     std::cout << "\nClock            : " << p.first->getName()
-            //               << "\nAuto collectables: " << std::endl;
-            //     p.second->print();
-            // }
+            iter->second->disable(ctn);
         }
 
         //! \return the pipeout file path
-        const std::string & getFilePath() const {
-            return filepath_;
+        const std::string & getFilePath() const
+        {
+            return db_mgr_->getDatabaseFilePath();
         }
 
         //! \return the scheduler for this collector
@@ -577,87 +420,80 @@ namespace collection
         }
 
     private:
-
-        /**
-         * \brief Write the clock file based off of a pointer to the root clock,
-         * that was established in the parameters of startCollection
-         */
-        void writeClockFile_()
+        class ClockDomainSweeper
         {
-            // We only need the ClockFileWriter to exist during the writing of the clock file.
-            // there for it was created on the stack.
-            //std::cout << "Writing Pipeline Collection clock file. " << std::endl;
-            pipeViewer::ClockFileWriter clock_writer(filepath_);
-            clock_writer << (*root_clk_);
-        }
+        public:
+            ClockDomainSweeper(simdb::CollectionMgr* mgr, const Clock* clk)
+                : clk_(clk)
+                , collection_mgr_(mgr)
+                , ev_set_(nullptr)
+                , ev_sweep_(&ev_set_, clk->getName() + "_sweep_event",
+                            CREATE_SPARTA_HANDLER(ClockDomainSweeper, performSweep_), 1)
+            {
+                ev_sweep_.setScheduleableClock(clk);
+                ev_sweep_.setScheduler(clk->getScheduler());
+                ev_sweep_.setContinuing(false);
+            }
 
-        //! Perform a heartbeat on the collector.  This is required to
-        //! enable the writing of an index file used by the pipeout
-        //! reader for fast access
-        void performHeartBeat_()
-        {
-            if(collection_active_) {
-                // Close all transactions
-                for(auto & ctn : registered_collectables_) {
-                    if(ctn->isCollected()) {
-                        ctn->restartRecord();
-                    }
+            void enable(CollectableTreeNode* ctn) {
+                sweepables_.insert(ctn);
+                ev_sweep_.schedule();
+            }
+
+            void disable(CollectableTreeNode* ctn) {
+                sweepables_.erase(ctn);
+            }
+
+        private:
+            void performSweep_() {
+                // "Current tick" has been changed to reflect that the Scheduler
+                // has moved on and is now on the "next" tick.  Elapsed time
+                // should reflect current tick - 1
+                auto tick = clk_->getScheduler()->getCurrentTick();
+                collection_mgr_->sweep(clk_->getName(), tick - 1);
+
+                if (!sweepables_.empty()) {
+                    ev_sweep_.schedule();
                 }
+            }
 
-                // write an index
-                writer_->writeIndex();
+            const Clock* clk_;
+            simdb::CollectionMgr* collection_mgr_;
+            std::unordered_set<CollectableTreeNode*> sweepables_;
 
-                // Remember the last time we recorded a heartbeat
-                last_heartbeat_ = scheduler_->getCurrentTick();
+            EventSet ev_set_;
+            sparta::UniqueEvent<SchedulingPhase::PostTick> ev_sweep_;
+        };
 
-                // Schedule another heartbeat
-                ev_heartbeat_.schedule(heartbeat_interval_);
+        void addToAutoSweep_(CollectableTreeNode * ctn, bool is_auto_collected)
+        {
+            auto& sweep = sweepers_[ctn->getClock()];
+            if (!sweep) {
+                sweep.reset(new ClockDomainSweeper(db_mgr_->getCollectionMgr(), ctn->getClock()));
+            }
+            sweep->enable(ctn);
+
+            ctn->getSimDbCollectable()->setAutoCollect(is_auto_collected);
+
+            if (is_auto_collected) {
+                auto_collected_paths_.push_back(ctn->getLocation());
             }
         }
 
-        //! A pointer to the outputter class used for writing
-        //! transactions to physical disk.
-        std::unique_ptr<pipeViewer::Outputter> writer_;
-
-        //! A pointer to the root sparta TreeNode of the
-        //! simulation. Important for writing the location map file.
-        std::unique_ptr<pipeViewer::LocationFileWriter> location_writer_;
-        //sparta::TreeNode* collected_treenode_ = nullptr;
-
-        //! Pointer to the root clock.  This clock is considered the
-        //! hyper-clock or the clock with the hypercycle
-        const sparta::Clock * root_clk_ = nullptr;
-
-        //! The filepath/prefix for writing pipeline collection files too
-        std::string filepath_;
-
-        //! Keep track of the last transaction id given to ensure that
-        //! each transaction is written with a unique id
-        uint64_t last_transaction_id_ = 0;
-
-        //! The number of transactions written to disk so far
-        uint64_t transactions_written_ = 0;
-
-        //! The number of ticks between heart beats. Also the offset
-        //! between index pointer writes in the Outputter
-        uint64_t heartbeat_interval_ = 0;
-
-        //! The last heartbeat we recorded
-        Scheduler::Tick last_heartbeat_ = 0;
+        //! The SimDB database
+        std::unique_ptr<simdb::DatabaseManager> db_mgr_;
 
         //! Scheduler on which this collector operates
-        Scheduler * scheduler_;
-
-        //! Event and EventSet for performing heartbeats
-        EventSet collector_events_;
-        UniqueEvent<SchedulingPhase::PostTick> ev_heartbeat_;
-
-        //! The time that the next heartbeat will occur
-        uint64_t closing_time_ = 0;
+        Scheduler * scheduler_ = nullptr;
 
         //! Is collection enabled on at least one node?
         bool collection_active_ = false;
 
+        //! Actively auto-sweeping nodes
+        std::unordered_map<const Clock*, std::unique_ptr<ClockDomainSweeper>> sweepers_;
+
+        //! All element paths for auto-collected collectables.
+        std::vector<std::string> auto_collected_paths_;
     };
 
 }// namespace collection

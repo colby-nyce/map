@@ -34,15 +34,12 @@
 #include "sparta/utils/StringUtils.hpp"
 #include "sparta/utils/ValidValue.hpp"
 #include "sparta/report/format/BaseFormatter.hpp"
-#include "sparta/report/db/ReportVerifier.hpp"
 #include "sparta/parsers/ConfigEmitterYAML.hpp"
-#include "sparta/report/DatabaseInterface.hpp"
 // // For filtered printouts
 #include "sparta/statistics/Counter.hpp"
 #include "sparta/ports/Port.hpp"
 #include "sparta/utils/File.hpp"
 #include "sparta/kernel/SleeperThread.hpp"
-#include "simdb/ObjectManager.hpp"
 #include "sparta/simulation/Clock.hpp"
 #include "sparta/utils/Colors.hpp"
 #include "sparta/simulation/GlobalTreeNode.hpp"
@@ -61,7 +58,6 @@
 #include "sparta/app/AppTriggers.hpp"
 #include "sparta/app/MetaTreeNode.hpp"
 #include "sparta/app/Simulation.hpp"
-#include "sparta/pipeViewer/InformationWriter.hpp"
 #include "sparta/log/Destination.hpp"
 #include "sparta/log/MessageSource.hpp"
 #include "sparta/log/Tap.hpp"
@@ -145,21 +141,19 @@ CommandLineSimulator::CommandLineSimulator(const std::string& usage,
     pipeout_opts_("Pipeline-Collection Options", OPTIONS_DOC_WIDTH),
     log_opts_("Logging Options", OPTIONS_DOC_WIDTH),
     report_opts_("Report Options", OPTIONS_DOC_WIDTH),
-    simdb_opts_("SimDB Options", OPTIONS_DOC_WIDTH),
-    simdb_internal_opts_("SimDB Options (internal / developer use)", OPTIONS_DOC_WIDTH),
     app_opts_("Application-Specific Options", OPTIONS_DOC_WIDTH),
     feature_opts_("Feature Evaluation Options", OPTIONS_DOC_WIDTH),
     advanced_opts_("Advanced Options", OPTIONS_DOC_WIDTH)
 {
     static std::stringstream heartbeat_doc;
     heartbeat_doc << \
-        "The interval in ticks at which index pointers will be written to file during pipeline "
-        "collection. The heartbeat also represents the longest life duration of lingering "
-        "transactions. Transactions with a life span longer than the heartbeat will be finalized "
-        "and then restarted with a new start time. Must be a multiple of 100 for efficient reading "
-        "by pipeViewer. Large values will reduce responsiveness of pipeViewer when jumping to different "
-        "areas of the file and loading.\nDefault = "
-        << DefaultHeartbeat << " ticks.\n";
+        "The maximum number of 'carry-overs' allowed during SimDB collection when encountering "
+        "unchanged collectable values. For example, if a collectable has the same value 5 for "
+        "100 cycles in a row, how often should we force a write to the database? This value is "
+        "used to determine how 'wide' of a SQLite query we have to cast to ensure we know the actual "
+        "collectable value. Lower values result in a larger database but with a more responsive UI. "
+        "Higher values gives higher compression, but some UI operations might take extra time. "
+        "The heartbeat value must be between 1 and 25, and defaults to 10.";
 
     sparta_opts_.add_options()
         ("help,h",
@@ -380,8 +374,13 @@ CommandLineSimulator::CommandLineSimulator(const std::string& usage,
          "Example: \"--pipeViewer-collection-at layouts/exe40.alf\" "
          "This option can be specified none or many times.") // Brief
         ("heartbeat",
-         named_value<std::string>("HEARTBEAT", &pipeline_heartbeat_)->default_value(pipeline_heartbeat_),
+         named_value<uint64_t>("HEARTBEAT", &pipeline_heartbeat_)->default_value(pipeline_heartbeat_),
          heartbeat_doc.str().c_str())
+        ("pipeline-num-compression-threads",
+         named_value<uint64_t>("PIPELINE_MAX_ZLIB_THREADS", &pipeline_num_compression_threads_)->default_value(pipeline_num_compression_threads_),
+         "The number of threads to use for compressing data before writing to the database. ")
+        ("log-pipeline-minification",
+         "Enable logging of minification statistics for pipeline collection")
         ;
 
     std::stringstream arch_search_dirs_str;
@@ -585,10 +584,6 @@ CommandLineSimulator::CommandLineSimulator(const std::string& usage,
          "Disable pretty print / verbose print for all JSON statistics reports")
         ("omit-zero-value-stats-from-json_reduced",
          "Omit all statistics that have value 0 from json_reduced statistics reports")
-        ("report-verif-output-dir",
-         named_value<std::vector<std::string>>("DIR_NAME", 1, 1),
-         "When SimDB report verification is enabled, this option will send all verification "
-         "artifacts to the specified directory, relative to the current working directory.")
         ("report-warmup-icount",
          named_value<uint64_t>(""),
          "DEPRECATED")
@@ -614,29 +609,6 @@ CommandLineSimulator::CommandLineSimulator(const std::string& usage,
          "to exits caused by fatal signal such as SIGKILL/SIGSEGV/SIGABRT, etc.",
          "Writes all reports even when run exits with error.")
         ;
-
-    // SimDB Options
-    simdb_opts_.add_options()
-      ("simdb-dir",
-       named_value<std::vector<std::string>>("DIR", 1, 1),
-       "Specify the location where the simulation database will be written")
-      ("simdb-enabled-components",
-       named_value<std::vector<std::vector<std::string>>>("", 1, INT_MAX)->multitoken(),
-       "Specify which simulator components should be enabled for SimDB access.\n"
-       "Example: \"--simdb-enabled-components dbaccess.yaml\"")
-        ;
-
-    // SimDB Options (internal / developer use)
-    simdb_internal_opts_.add_options()
-      ("collect-legacy-reports",
-       named_value<std::vector<std::string>>("DIR", 1, INT_MAX)->multitoken(),
-       "Specify the root directory where all legacy report files will be written. "
-       "This directory will be created if needed. Optionally supply one or more "
-       "specific report format types that you *only* want to be collected, otherwise "
-       "all report formats will be collected by default.\n"
-       "Example: \"--collect-legacy-reports test/report/dir\"\n"
-       "Example: \"--collect-legacy-reports test/report/dir json_reduced csv_cumulative\"")
-      ;
 
     // Feature Options
     feature_opts_.add_options()
@@ -716,8 +688,6 @@ bool CommandLineSimulator::parse(int argc,
             .add(log_opts_.getVerboseOptions())
             .add(pipeout_opts_.getVerboseOptions())
             .add(report_opts_.getVerboseOptions())
-            .add(simdb_opts_.getVerboseOptions())
-            .add(simdb_internal_opts_.getVerboseOptions())
             .add(app_opts_.getVerboseOptions())
             .add(feature_opts_.getVerboseOptions())
             .add(advanced_opts_.getVerboseOptions());
@@ -1115,9 +1085,6 @@ bool CommandLineSimulator::parse(int argc,
                 }
                 sim_config_.setMemoryUsageDefFile(def_file);
                 opts.options.erase(opts.options.begin() + i);
-            }else if (o.string_key == "report-verif-output-dir") {
-                db::ReportVerifier::writeVerifResultsTo(o.value[0]);
-                opts.options.erase(opts.options.begin() + i);
             }else if (o.string_key == "report-warmup-icount") {
                 throw_report_deprecated = true;
                 ++i;
@@ -1429,49 +1396,6 @@ bool CommandLineSimulator::parse(int argc,
                 }
                 std::cout << " set infinite loop protection timeout to " << seconds << " seconds" << std::endl;
                 SleeperThread::getInstance()->setInfLoopSleepInterval(std::chrono::seconds(seconds));
-                ++i;
-            } else if(o.string_key == "simdb-dir") {
-                const std::string & db_dir = o.value[0];
-                auto p = sfs::path(db_dir);
-                if (!sfs::exists(p)) {
-                    sfs::create_directories(p);
-                } else if (!sfs::is_directory(p)) {
-                    throw SpartaException("Invalid 'simdb-dir' argument. Path ")
-                        << "exists but is not a directory.";
-                }
-                sim_config_.setSimulationDatabaseLocation(db_dir);
-                ++i;
-            } else if(o.string_key == "simdb-enabled-components") {
-                std::vector<std::string> yaml_opts_files;
-                auto is_yaml_file = [](const std::string & opt) {
-                    auto p = sfs::path(opt);
-                    return (sfs::exists(p) && !sfs::is_directory(p));
-                };
-
-                for (size_t idx = 0; idx < o.value.size(); ++idx) {
-                    sparta_assert(is_yaml_file(o.value[idx]),
-                                "File not found: " << o.value[idx]);
-                    yaml_opts_files.emplace_back(o.value[idx]);
-                }
-
-                for (const auto & opt_file : yaml_opts_files) {
-                    sim_config_.addSimulationDatabaseAccessOptsYaml(opt_file);
-                }
-                ++i;
-            } else if(o.string_key == "collect-legacy-reports") {
-                const std::string & reports_root_dir = o.value[0];
-                auto p = sfs::path(reports_root_dir);
-                if (!sfs::exists(p)) {
-                    sfs::create_directories(p);
-                } else if (!sfs::is_directory(p)) {
-                    throw SpartaException("Invalid 'collect-legacy-reports' argument. Path ")
-                        << "exists but is not a directory.";
-                }
-                std::set<std::string> collected_formats;
-                for (size_t idx = 1; idx < o.value.size(); ++idx) {
-                    collected_formats.insert(o.value[idx]);
-                }
-                sim_config_.setLegacyReportsCopyDir(reports_root_dir, collected_formats);
                 ++i;
             } else if(o.string_key == "feature") {
                 const std::string & name = o.value[0];
@@ -1847,6 +1771,18 @@ bool CommandLineSimulator::parse(int argc,
     sim_config_.report_on_error         = vm_.count("report-on-error") > 0;
     sim_config_.reports                 = reports;
 
+    if (sim_config_.pipeline_collection_file_prefix != NoPipelineCollectionStr) {
+        auto& simdb_filename = sim_config_.pipeline_collection_file_prefix;
+        auto fs_path = std::filesystem::path(simdb_filename);
+        if (!fs_path.has_extension() || fs_path.extension() != ".db") {
+            simdb_filename += ".db";
+        }
+
+        if (vm_.count("log-pipeline-minification") > 0) {
+            simdb::CollectionPointBase::enableMinificationLogging();
+        }
+    }
+
     //pevents
     run_pevents_ = (vm_.count("pevents-at") > 0) || (vm_.count("pevents") > 0) || (vm_.count("verbose-pevents") > 0);
 
@@ -1910,7 +1846,7 @@ bool CommandLineSimulator::parse(int argc,
         //print out some stuff about the pipeline collections run status.
         std::cout << "  pipeline-collection: " << std::boolalpha << collecting << std::endl;
         if(collecting){
-            std::cout << "  output dir:          " << sim_config_.pipeline_collection_file_prefix << std::endl;
+            std::cout << "  simdb file:          " << sim_config_.pipeline_collection_file_prefix << std::endl;
             std::cout << "  pipeline heartbeat:  " << pipeline_heartbeat_ << std::endl;
         }
     }
@@ -1947,19 +1883,11 @@ void CommandLineSimulator::populateSimulation_(Simulation* sim)
         throw SpartaException("Cannot setup the simulation more than once");
     }
 
-    // Convert heartbeat command line string to int
-    uint32_t heartbeat;
-    try{
-        size_t end_pos;
-        heartbeat = utils::smartLexicalCast<uint32_t>(pipeline_heartbeat_, end_pos);
-    }catch (SpartaException const&){
-        throw SpartaException("HEARTBEAT for pipeline collection must be an integer value and a multiple of 100 > 0, not \"")
-            << pipeline_heartbeat_ << "\"";
+    if(pipeline_heartbeat_ == 0) {
+        throw SpartaException("HEARTBEAT for pipeline collection must be an integer value > 0");
     }
-
-    if(heartbeat != 0 && heartbeat % 100 != 0){
-        throw SpartaException("HEARTBEAT for pipeline collection must be a multiple of 100 > 0, not \"")
-            << heartbeat << "\"";
+    if(pipeline_heartbeat_ > 25) {
+        throw SpartaException("HEARTBEAT for pipeline collection must be an integer value <= 25");
     }
 
     // Pevent
@@ -2002,22 +1930,6 @@ void CommandLineSimulator::populateSimulation_(Simulation* sim)
     }
 
     sim_config_.copyTreeNodeExtensionsFromArchAndConfigPTrees();
-
-    //The simdb feature is enabled by default unless it was explicitly
-    //disabled at the command line. The reports will go to the pwd and
-    //to the database at the same time, and at the end of simulation
-    //the SimDB reports are exported to the filesystem, and the two
-    //formatted report files are compared.
-    //
-    //This slows down simulation overall since we're capturing twice
-    //the amount of report data / metadata, but this is to ensure the
-    //new database is working for all scenarios while the database
-    //backend gets some bake time. But we'll leave it here for a little
-    //while so downstream SPARTA clients can revert to legacy reporting
-    //infrastructure if they really need to.
-    if (!feature_config_.isFeatureValueSet("simdb")) {
-        feature_config_.setFeatureValue("simdb", 0);
-    }
     sim->setFeatureConfig(&feature_config_);
 
     // Configure the simulator itself (not its content)
@@ -2126,18 +2038,10 @@ void CommandLineSimulator::populateSimulation_(Simulation* sim)
             const bool multiple_triggers = sim_config_.trigger_on_type == SimulationConfiguration::TriggerSource::TRIGGER_ON_ROI;
             pipeline_collection_triggerable_.reset(new PipelineTrigger(sim_config_.pipeline_collection_file_prefix,
                                                                        pipeline_enabled_node_names_,
-                                                                       heartbeat,
+                                                                       pipeline_heartbeat_,
                                                                        multiple_triggers,
-                                                                       sim->getRootClock(),
-                                                                       sim->getRoot()));
-
-            // If pipeline collection is turned on begin writing an info file
-            // about the simulation.
-            info_out_.reset(new sparta::InformationWriter(sim_config_.pipeline_collection_file_prefix+"simulation.info"));
-            info_out_->write("Pipeline Collection files generated from simulator ");
-            info_out_->write(sim->getSimName());
-            info_out_->write("\n\nSimulation started at: ");
-            info_out_->writeLine(sparta::TimeManager::getTimeManager().getLocalTime());
+                                                                       sim->getRoot(),
+                                                                       pipeline_num_compression_threads_));
         }
 
         // Finalize the pevent controller now that the tree is built.
@@ -2392,8 +2296,6 @@ void CommandLineSimulator::runSimulator_(Simulation* sim, uint64_t ticks)
                 if(pipeline_collection_triggerable_->isTriggered()) {
                     pipeline_collection_triggerable_->stop();
                 }
-                info_out_->write("Simulation aborted at: ");
-                info_out_->writeLine(sparta::TimeManager::getTimeManager().getLocalTime());
             }
 
             // In interactive simulation, we would try and enter a "debug mode" and
@@ -2407,12 +2309,6 @@ void CommandLineSimulator::runSimulator_(Simulation* sim, uint64_t ticks)
         if(pipeline_collection_triggerable_->isTriggered()) {
             pipeline_collection_triggerable_->stop();
         }
-
-         // Write the end time of the simulation.
-        info_out_->write("Simulation ended at: ");
-        info_out_->writeLine(sparta::TimeManager::getTimeManager().getLocalTime());
-        sparta::InformationWriter& outputter = *(info_out_.get());
-        outputter << "Heartbeat interval: " << pipeline_heartbeat_ << " ticks" << "\n";
     }
 
     if(show_tree_){
@@ -2432,33 +2328,8 @@ void CommandLineSimulator::postProcess(Simulation* sim)
     }
 }
 
-void CommandLineSimulator::postProcess_(Simulation* sim)
+void CommandLineSimulator::postProcess_(Simulation*)
 {
-    auto simdb = GET_DB_FOR_COMPONENT(Stats, sim);
-
-    if (simdb) {
-        auto feature_cfg = sim->getFeatureConfiguration();
-        if (IsFeatureValueEnabled(feature_cfg, "simdb-verify")) {
-            std::string simdb_fname = simdb->getDatabaseFile();
-            const std::string simdb_src_fname = simdb_fname;
-            simdb_fname = sfs::path(simdb_fname).filename().string();
-
-            sfs::path cwd = sfs::current_path();
-            const std::string simdb_dest_dir =
-                cwd.string() + "/" + db::ReportVerifier::getVerifResultsDir();
-
-            const std::string simdb_dest_fname = simdb_dest_dir + "/" + simdb_fname;
-            std::error_code err;
-            sfs::copy_file(simdb_src_fname, simdb_dest_fname, err);
-            if (err) {
-                std::cout << "  [simdb] Warning: The 'simdb-verify' post processing step "
-                          << "encountered and trapped a std::filesystem error: \""
-                          << err.message() << "\"" << std::endl;
-            }
-        }
-    }
-
-    sim->postProcessingLastCall();
 }
 
 void CommandLineSimulator::printUsageHelp_() const
@@ -2475,7 +2346,6 @@ void CommandLineSimulator::printOptionsHelp_(uint32_t level) const
               << pipeout_opts_.getOptionsLevelUpTo(level) << std::endl
               << debug_opts_.getOptionsLevelUpTo(level) << std::endl
               << report_opts_.getOptionsLevelUpTo(level) << std::endl
-              << simdb_opts_.getOptionsLevelUpTo(level) << std::endl
               << app_opts_.getOptionsLevelUpTo(level) << std::endl;
 
     if(0 == level){
@@ -2572,3 +2442,4 @@ bool CommandLineSimulator::openALFAndFindPipelineNodes_(const std::string & alf_
 
     } // namespace app
 } // namespace sparta
+
