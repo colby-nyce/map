@@ -463,8 +463,7 @@ void testCollection()
     rtn.enterConfiguring();
     rtn.enterFinalized();
 
-    sparta::collection::PipelineCollector pc("testCircBuffer", 1000000,
-                                             root_clk.get(), &rtn);
+    sparta::collection::PipelineCollector pc("testCircBuffer", 1000000, &rtn);
 
     sched.finalize();
 

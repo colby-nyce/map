@@ -94,7 +94,7 @@ namespace core_example
                 CREATE_SPARTA_HANDLER_WITH_DATA(Execute, completeInst_, ExampleInstPtr)};
 
         // A pipeline collector
-        sparta::collection::Collectable<ExampleInstPtr> collected_inst_;
+        sparta::collection::Collectable<ExampleInst> collected_inst_;
 
         // Counter
         sparta::Counter total_insts_issued_{

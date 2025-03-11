@@ -355,6 +355,8 @@ TestSystem::TestSystem(double master_frequency_mhz, double slave_frequency_mhz)
     master_clk = cm.makeClock("master_clk", root_clk, master_frequency_mhz);
     slave_clk  = cm.makeClock("slave_clk", root_clk, slave_frequency_mhz);
 
+    rtn.setClock(root_clk.get());
+
     master_tn.reset(new sparta::ResourceTreeNode(&rtn, "master", "master", &rfact));
     master_tn->setClock(master_clk.get());
 
@@ -395,7 +397,7 @@ TestSystem::TestSystem(double master_frequency_mhz, double slave_frequency_mhz)
     master_unit->in_cmd.precedes(master_unit->in_data);
 
 #ifdef PIPEOUT_GEN
-    pc.reset(new sparta::collection::PipelineCollector("testPipe", 1000000, root_clk.get(), &rtn));
+    pc.reset(new sparta::collection::PipelineCollector("testPipe", 1000000, &rtn));
 #endif
 
     sched.finalize();

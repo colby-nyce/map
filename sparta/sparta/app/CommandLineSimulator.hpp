@@ -55,8 +55,6 @@ class InformationWriter;
 
 namespace app {
 
-const constexpr char DefaultHeartbeat[]        = "0";
-
 
 /*!
  * \class CommandLineSimulator
@@ -457,13 +455,16 @@ protected:
      */
     std::unique_ptr<sparta::trigger::Triggerable> pipeline_collection_triggerable_;
     std::unique_ptr<sparta::trigger::Trigger>     pipeline_trigger_;
-    std::unique_ptr<sparta::InformationWriter>    info_out_;
 
     /*!
-     * \brief Heartbeat period of pipeline collection file (before lexical cast
-     * or validation)
+     * \brief Heartbeat period of pipeline collection file.
      */
-    std::string pipeline_heartbeat_ = DefaultHeartbeat;
+    uint64_t pipeline_heartbeat_ = 10;
+
+    /*!
+     * \brief Maximum number of compression threads to use for pipeline collection.
+     */
+    size_t pipeline_num_compression_threads_ = 2;
 
     //! The names of the nodes to be enabled
     std::set<std::string> pipeline_enabled_node_names_;
@@ -569,18 +570,6 @@ private:
      * \brief Builtin sparta command line options
      */
     MultiDetailOptions report_opts_;
-
-    /*!
-     * \brief Builtin sparta command line options for SimDB
-     */
-    MultiDetailOptions simdb_opts_;
-
-    /*!
-     * \brief Builtin sparta command line options for SimDB
-     * (internal / developer use only - not visible to
-     * command line help printout)
-     */
-    MultiDetailOptions simdb_internal_opts_;
 
     /*!
      * \brief Application-specific options

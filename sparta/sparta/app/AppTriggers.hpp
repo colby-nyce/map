@@ -24,7 +24,7 @@ namespace sparta {
 
 /*!
  * \class PipelineTrigger
- * \brief Trigger used to enable/disable Pipeline colletion
+ * \brief Trigger used to enable/disable Pipeline collection
  */
 class PipelineTrigger : public trigger::Triggerable
 {
@@ -33,27 +33,22 @@ public:
                     const std::set<std::string>& pipeline_enabled_node_names,
                     uint64_t pipeline_heartbeat,
                     bool multiple_triggers,
-                    sparta::Clock * clk, sparta::RootTreeNode * rtn) :
+                    sparta::RootTreeNode * rtn,
+                    size_t pipeline_num_compression_threads = 2) :
         pipeline_collection_path_(pipeline_collection_path),
         pipeline_enabled_node_names_(pipeline_enabled_node_names),
-        pipeline_heartbeat_(pipeline_heartbeat),
         multiple_triggers_(multiple_triggers),
-        clk_(clk),
         root_(rtn)
     {
-        pipeline_collector_.
-            reset(new sparta::collection::PipelineCollector(multiple_triggers_ ? getCollectionPath_() : pipeline_collection_path_,
-                                                            pipeline_heartbeat_,
-                                                            clk_,
-                                                            root_));
-
+        auto simdb_filename = getCollectionPath_();
+        pipeline_collector_.reset(new sparta::collection::PipelineCollector(simdb_filename, pipeline_heartbeat, rtn, pipeline_num_compression_threads));
     }
 
     void go() override
     {
         sparta_assert(!triggered_, "Why has pipeline trigger been triggered?");
         triggered_ = true;
-        std::cout << "Pipeline collection started, output to files with prefix '"
+        std::cout << "Pipeline collection started, output to database file '"
                   << pipeline_collector_->getFilePath() << "'" << std::endl;
         startCollection_();
 
@@ -124,20 +119,23 @@ private:
 
     std::string getCollectionPath_() const
     {
-        if(pipeline_collection_path_.back() == '/') {
-            return pipeline_collection_path_ + std::to_string(num_collections_) + '_';
+        if (num_collections_ == 0) {
+            return pipeline_collection_path_;
         }
-        else {
-            return pipeline_collection_path_ + '_' + std::to_string(num_collections_) + '_';
-        }
+
+        auto p = pipeline_collection_path_;
+        auto dot = p.rfind(".db");
+        sparta_assert(dot != std::string::npos, "Database filename must end in .db");
+
+        p = p.substr(0, dot);
+        p += "_" + std::to_string(num_collections_) + ".db";
+        return p;
     }
 
     std::unique_ptr<collection::PipelineCollector> pipeline_collector_;
     const std::string pipeline_collection_path_;
     const std::set<std::string> pipeline_enabled_node_names_;
-    const uint64_t pipeline_heartbeat_;
     const bool multiple_triggers_;
-    sparta::Clock * clk_ = nullptr;
     sparta::RootTreeNode * root_ = nullptr;
     uint32_t num_collections_ = 0;
 };

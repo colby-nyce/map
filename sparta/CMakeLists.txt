@@ -12,9 +12,6 @@ include (${SPARTA_BASE}/cmake/sparta-config.cmake)
 
 # Add the source for libsparta.a
 list (APPEND SourceCppFiles
-            src/ArgosOutputter.cpp
-            src/AsyncTimeseriesReport.cpp
-            src/AsyncNonTimeseriesReport.cpp
             src/Backtrace.cpp
             src/BaseFormatter.cpp
             src/Clock.cpp
@@ -26,8 +23,6 @@ list (APPEND SourceCppFiles
             src/CounterBase.cpp
             src/CsvFormatter.cpp
             src/DAG.cpp
-            src/DatabaseContextCounter.cpp
-            src/DatabaseSchema.cpp
             src/Destination.cpp
             src/EdgeFactory.cpp
             src/EventNode.cpp
@@ -45,10 +40,7 @@ list (APPEND SourceCppFiles
             src/RegisterSet.cpp
             src/Report.cpp
             src/ReportDescriptor.cpp
-            src/ReportHeader.cpp
             src/ReportRepository.cpp
-            src/ReportTimeseries.cpp
-            src/ReportVerifier.cpp
             src/Resource.cpp
             src/SpartaException.cpp
             src/RootTreeNode.cpp
@@ -58,8 +50,6 @@ list (APPEND SourceCppFiles
             src/Simulation.cpp
             src/SimulationConfiguration.cpp
             src/SimulationInfo.cpp
-            src/SingleUpdateReport.cpp
-            src/SINodeHierarchy.cpp
             src/StatisticDef.cpp
             src/StatisticInstance.cpp
             src/StatisticsArchives.cpp
@@ -160,7 +150,7 @@ if(DEFINED SPARTA_CXX_FLAGS_DEBUG AND SPARTA_CXX_FLAGS_DEBUG)
   set(CMAKE_CXX_FLAGS_DEBUG "${SPARTA_CXX_FLAGS_DEBUG}")
   message(STATUS "Using Sparta custom debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
 else()
-  set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
+  set(CMAKE_CXX_FLAGS_DEBUG "-U_FORTIFY_SOURCE -O0 -g3")
   message(STATUS "Using Sparta default debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
 endif()
 #
@@ -221,9 +211,6 @@ target_include_directories (sparta PUBLIC "simdb/include")
 set (SPARTA_STATIC_LIBS ${PROJECT_BINARY_DIR}/libsparta.a)
 set (SPARTA_CMAKE_MACRO_PATH ${SPARTA_BASE}/cmake)
 
-# Build the SimDB library
-add_subdirectory (simdb)
-
 #
 # Testing, examples, and tools
 #
@@ -237,3 +224,4 @@ install(DIRECTORY sparta/ DESTINATION include/sparta)
 install(DIRECTORY cache/ DESTINATION include/cache)
 install(FILES ${SPARTA_STATIC_LIBS} DESTINATION lib)
 install(DIRECTORY cmake/ DESTINATION lib/cmake/sparta)
+install(DIRECTORY simdb/include DESTINATION .)

@@ -138,7 +138,7 @@ int main()
     root_node.enterFinalized();
 
 #ifdef PIPEOUT_GEN
-    sparta::collection::PipelineCollector pc("test_collection_", 1000, &clk, &root);
+    sparta::collection::PipelineCollector pc("test_collection_", 1000, &root);
 #endif
 
     sched.finalize();

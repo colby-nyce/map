@@ -107,8 +107,7 @@ void generalTest()
     sparta::log::Tap t2(root_clk.get()->getScheduler(), "debug", "scheduler.log.debug");
 
 #ifdef PIPEOUT_GEN
-    sparta::collection::PipelineCollector pc("testBuffer", 1000000,
-                                           root_clk.get(), &rtn);
+    sparta::collection::PipelineCollector pc("testBuffer", 1000000, &rtn);
 #endif
 
     sched.finalize();

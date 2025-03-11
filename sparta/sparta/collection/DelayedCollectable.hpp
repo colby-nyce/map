@@ -12,7 +12,6 @@
 #include <sstream>
 #include <functional>
 #include "sparta/collection/Collectable.hpp"
-#include "sparta/pipeViewer/transaction_structures.hpp"
 #include "sparta/events/EventSet.hpp"
 #include "sparta/events/PayloadEvent.hpp"
 
@@ -60,18 +59,15 @@ namespace collection
          * \param name The name for which to create this object as a child sparta::TreeNode
          * \param group The group for which to create this object as a child sparta::TreeNode
          * \param index The index within the group for this collectable
-         * \param parentid The transaction id of a parent for this collectable; 0 for no parent
          * \param desc A description for the interface
          */
         DelayedCollectable(sparta::TreeNode* parent,
                            const std::string& name,
                            const std::string& group,
                            uint32_t index,
-                           uint64_t parentid = 0,
                            const std::string & desc = "DelayedCollectable <manual, no desc>") :
             Collectable<DataT>(parent, name, group, index, desc)
         {
-            (void) parentid;
         }
 
         /**
@@ -79,29 +75,25 @@ namespace collection
          * \param parent A pointer to a parent treenode.  Must not be null
          * \param name The name for which to create this object as a child sparta::TreeNode
          * \param collected_object Pointer to the object to collect during the "COLLECT" phase
-         * \param parentid The transaction id of a parent for this collectable; 0 for no parent
          * \param desc A description for the interface
          */
         DelayedCollectable(sparta::TreeNode* parent,
                            const std::string& name,
                            const DataT * collected_object,
-                           uint64_t parentid = 0,
                            const std::string & desc = "DelayedCollectable <no desc>") :
-            Collectable<DataT>(parent, name, collected_object, parentid, desc)
+            Collectable<DataT>(parent, name, collected_object, desc)
         {}
 
         /**
          * \brief Construct the DelayedCollectable, no data object associated
          * \param parent A pointer to a parent treenode.  Must not be null
          * \param name The name for which to create this object as a child sparta::TreeNode
-         * \param parentid The transaction id of a parent for this collectable; 0 for no parent
          * \param desc A description for the interface
          */
         DelayedCollectable(sparta::TreeNode* parent,
                            const std::string& name,
-                           uint64_t parentid = 0,
                            const std::string & desc = "DelayedCollectable <manual, no desc>") :
-            DelayedCollectable(parent, name, nullptr, parentid, desc)
+            DelayedCollectable(parent, name, nullptr, desc)
         {
             // Can't auto collect without setting iterable_object_
             Collectable<DataT>::setManualCollection();
@@ -118,7 +110,7 @@ namespace collection
          */
         void collect(const DataT & val, sparta::Clock::Cycle delay)
         {
-            if(SPARTA_EXPECT_FALSE(isCollected()))
+            if(SPARTA_EXPECT_TRUE(isCollected()))
             {
                 if(delay != 0) {
                     ev_collect_.schedule(val, delay);
@@ -143,7 +135,7 @@ namespace collection
                                  sparta::Clock::Cycle delay,
                                  sparta::Clock::Cycle duration)
         {
-            if(SPARTA_EXPECT_FALSE(isCollected()))
+            if(SPARTA_EXPECT_TRUE(isCollected()))
             {
                 if(delay != 0) {
                     ev_collect_duration_.preparePayload({val, duration})->schedule(delay);
