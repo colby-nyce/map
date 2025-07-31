@@ -15,7 +15,28 @@
 
 namespace sparta::serialization::checkpoint
 {
-    class FastCheckpointer;
+    //! \brief tick_t Tick type to which checkpoints will refer
+    typedef sparta::Scheduler::Tick tick_t;
+
+    //! \brief chkpt_id_t Unique ID for each checkpoint
+    typedef uint64_t chkpt_id_t;
+
+    class Checkpoint;
+
+    /*!
+     * \brief Backing store base class to gain access to other
+     * checkpoints that may no longer exist in memory. Needed for
+     * checkpoint prev/next chains (history, restore).
+     */
+    class CheckpointAccessor
+    {
+    public:
+        virtual ~CheckpointAccessor() = default;
+        virtual Checkpoint* findCheckpoint(chkpt_id_t id) noexcept = 0;
+        virtual const Checkpoint* findCheckpoint(chkpt_id_t id) const noexcept = 0;
+        virtual std::vector<chkpt_id_t> getCheckpointsAt(tick_t t) const = 0;
+        virtual std::vector<chkpt_id_t> getCheckpoints() const = 0;
+    };
 
     /*!
      * \brief Single checkpoint object interface with a tick number and an ID
@@ -28,20 +49,6 @@ namespace sparta::serialization::checkpoint
     class Checkpoint
     {
     public:
-
-        //! \name Local Types
-        //! @{
-        ////////////////////////////////////////////////////////////////////////
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef sparta::Scheduler::Tick tick_t;
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef uint64_t chkpt_id_t;
-
-        ////////////////////////////////////////////////////////////////////////
-        //! @}
-
         /*!
          * \brief Indicates the smallest valid checkpoint id
          */
@@ -74,10 +81,12 @@ namespace sparta::serialization::checkpoint
          */
         Checkpoint(chkpt_id_t id,
                    tick_t tick,
-                   Checkpoint* prev) :
+                   Checkpoint* prev,
+                   CheckpointAccessor& chkpt_accessor) :
             tick_(tick),
             chkpt_id_(id),
-            prev_(prev)
+            prev_(prev),
+            chkpt_accessor_(chkpt_accessor)
         { }
 
     public:
@@ -267,6 +276,13 @@ namespace sparta::serialization::checkpoint
         std::vector<Checkpoint*> nexts_;
 
         Checkpoint* prev_; //!< Previous checkpoint (earlier) than this. *this contains changes following prev.
+
+        /*!
+         * \brief Backing store implementation to gain access to other
+         * checkpoints that may no longer exist in memory. Needed for
+         * checkpoint prev/next chains (history, restore).
+         */
+        CheckpointAccessor& chkpt_accessor_;
     };
 
 } // namespace sparta::serialization::checkpoint
@@ -291,6 +307,6 @@ inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::ch
 //! \brief Required in simulator source to define some globals.
 #define SPARTA_CHECKPOINT_BODY                                            \
     namespace sparta{ namespace serialization { namespace checkpoint {    \
-        const Checkpoint::chkpt_id_t Checkpoint::MIN_CHECKPOINT;        \
-        const Checkpoint::chkpt_id_t Checkpoint::UNIDENTIFIED_CHECKPOINT; \
+        const chkpt_id_t Checkpoint::MIN_CHECKPOINT;                      \
+        const chkpt_id_t Checkpoint::UNIDENTIFIED_CHECKPOINT;             \
     }}}

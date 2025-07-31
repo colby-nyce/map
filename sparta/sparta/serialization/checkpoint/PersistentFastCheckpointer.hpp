@@ -24,7 +24,7 @@ namespace sparta::serialization::checkpoint
      * checkpoints to memory), this class enables user the save the
      * checkpoints to disk for loading later.
      */
-    class PersistentFastCheckpointer : public FastCheckpointer
+    class PersistentFastCheckpointer : public FastCheckpointer<>
     {
     public:
 
@@ -148,7 +148,7 @@ namespace sparta::serialization::checkpoint
          */
         PersistentFastCheckpointer(TreeNode& root,
                                    sparta::Scheduler* sched=nullptr) :
-            FastCheckpointer(root, sched),
+            FastCheckpointer<>(root, sched),
             prefix_("chkpt"),
             suffix_("data")
         { }
@@ -167,8 +167,8 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        FastCheckpointer::chkpt_id_t save(std::ostream& outf) {
-            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(true);
+        chkpt_id_t save(std::ostream& outf) {
+            chkpt_id_t checkpoint_id = createCheckpoint(true);
             save_(outf);
             return checkpoint_id;
         }
@@ -179,8 +179,8 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        FastCheckpointer::chkpt_id_t save(std::string filename) {
-            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(true);
+        chkpt_id_t save(std::string filename) {
+            chkpt_id_t checkpoint_id = createCheckpoint(true);
             std::ofstream outf(filename, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
             save_(outf);
             outf.close();
@@ -194,9 +194,9 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        FastCheckpointer::chkpt_id_t save() {
+        chkpt_id_t save() {
             const bool force_snapshot = true;
-            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(force_snapshot);
+            chkpt_id_t checkpoint_id = createCheckpoint(force_snapshot);
             std::ostringstream chkpt_filename;
             chkpt_filename << prefix_ << "."
                            << checkpoint_id
