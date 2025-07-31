@@ -13,7 +13,7 @@
 #include "sparta/utils/SpartaAssert.hpp"
 
 #include "sparta/serialization/checkpoint/DeltaCheckpoint.hpp"
-#include "sparta/serialization/checkpoint/OrderedMapBackingStore.hpp"
+#include "sparta/serialization/checkpoint/MemoryBackingStore.hpp"
 
 //! Default threshold for creating snapshots
 #ifndef DEFAULT_SNAPSHOT_THRESH
@@ -63,7 +63,7 @@ namespace sparta::serialization::checkpoint
      * \todo Compression
      * \todo Saving to disk using a templated checkpoint object storage class (allowing for non-binary)
      */
-    template <typename BackingStore=OrderedMapBackingStore>
+    template <typename BackingStore=MemoryBackingStore>
     class FastCheckpointer : public Checkpointer<BackingStore>
     {
     public:

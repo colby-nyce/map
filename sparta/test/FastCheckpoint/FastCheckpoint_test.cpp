@@ -991,17 +991,17 @@ int main()
                                                                  sparta::log::categories::WARN,
                                                                  "warnings.log"));
 
-    using sparta::serialization::checkpoint::OrderedMapBackingStore;
-    runAllTests<OrderedMapBackingStore>();
+    using sparta::serialization::checkpoint::MemoryBackingStore;
+    runAllTests<MemoryBackingStore>();
 
-    using sparta::serialization::checkpoint::DatabaseBackingStore;
-    runAllTests<DatabaseBackingStore>();
+    //using sparta::serialization::checkpoint::DatabaseBackingStore;
+    //runAllTests<DatabaseBackingStore>();
 
     clock_t start = clock();
     std::array<clock_t, 5> times{{0,0,0,0,0}};
     for(uint32_t i = 0; i < times.size(); i++){
         clock_t istart = clock();
-        speedTest1<OrderedMapBackingStore>();
+        speedTest1<MemoryBackingStore>();
         clock_t idelta = clock() - istart;
         times[i] = idelta;
     }

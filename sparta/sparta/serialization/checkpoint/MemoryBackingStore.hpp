@@ -1,4 +1,4 @@
-// <OrderedMapBackingStore> -*- C++ -*-
+// <MemoryBackingStore> -*- C++ -*-
 
 #pragma once
 
@@ -10,7 +10,7 @@ namespace sparta::serialization::checkpoint
     /*!
      * \brief Checkpoint backing store which holds all checkpoints in a std::map.
      */
-    class OrderedMapBackingStore : public CheckpointAccessor
+    class MemoryBackingStore : public CheckpointAccessor
     {
     public:
         //! \name Local Types
