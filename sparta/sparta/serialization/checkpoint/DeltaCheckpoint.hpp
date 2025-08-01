@@ -347,6 +347,7 @@ namespace sparta::serialization::checkpoint
 
     } // namespace storage
 
+    template <typename BackingStore>
     class FastCheckpointer;
 
     /*!
@@ -421,8 +422,9 @@ namespace sparta::serialization::checkpoint
                         chkpt_id_t id,
                         tick_t tick,
                         DeltaCheckpoint* prev_delta,
-                        bool is_snapshot) :
-            Checkpoint(id, tick, prev_delta),
+                        bool is_snapshot,
+                        CheckpointAccessor& chkpt_accessor) :
+            Checkpoint(id, tick, prev_delta, chkpt_accessor),
             deleted_id_(UNIDENTIFIED_CHECKPOINT),
             is_snapshot_(is_snapshot)
         {
@@ -445,6 +447,7 @@ namespace sparta::serialization::checkpoint
         }
 
         //! DeltaCheckpoints can only be constructed by the FastCheckpointer
+        template <typename BackingStore>
         friend class FastCheckpointer;
 
     public:

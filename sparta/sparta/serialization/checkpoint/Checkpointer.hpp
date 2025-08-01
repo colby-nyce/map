@@ -53,22 +53,10 @@ namespace sparta::serialization::checkpoint
      * \li repeat in any order necessary
      * \endverbatim
      */
+    template <typename BackingStore>
     class Checkpointer
     {
     public:
-
-        //! \name Local Types
-        //! @{
-        ////////////////////////////////////////////////////////////////////////
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef Checkpoint::tick_t tick_t;
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef Checkpoint::chkpt_id_t chkpt_id_t;
-
-        ////////////////////////////////////////////////////////////////////////
-        //! @}
 
         //! \name Construction & Initialization
         //! @{
@@ -85,18 +73,23 @@ namespace sparta::serialization::checkpoint
          * checkpointer will not touch attempt to roll back the scheduler on
          * checkpoint restores
          */
-        Checkpointer(TreeNode& root, sparta::Scheduler* sched=nullptr) :
+        template <typename... BackingStoreArgs>
+        Checkpointer(TreeNode& root, sparta::Scheduler* sched=nullptr, BackingStoreArgs&&... args) :
+            store_(std::forward<BackingStoreArgs>(args)...),
             sched_(sched),
             root_(root),
             head_(nullptr),
             current_(nullptr),
             total_chkpts_created_(0)
-        { }
+        {
+            static_assert(std::is_base_of_v<CheckpointAccessor, BackingStore>);
+        }
 
         /*!
          * \brief Destructor
          */
         virtual ~Checkpointer() {
+            store_.flagAllDeleted();
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -128,11 +121,7 @@ namespace sparta::serialization::checkpoint
          * minimal dynamic overhead from stl containers.
          */
         uint64_t getTotalMemoryUse() const noexcept {
-            uint64_t mem = 0;
-            for(auto& cp : chkpts_){
-                mem += cp.second->getTotalMemoryUse();
-            }
-            return mem;
+            return store_.getTotalMemoryUse();
         }
 
         /*!
@@ -140,11 +129,7 @@ namespace sparta::serialization::checkpoint
          * this moment purely for the checkpoint state being held
          */
         uint64_t getContentMemoryUse() const noexcept {
-            uint64_t mem = 0;
-            for(auto& cp : chkpts_){
-                mem += cp.second->getContentMemoryUse();
-            }
-            return mem;
+            return store_.getContentMemoryUse();
         }
 
         /*!
@@ -398,8 +383,8 @@ namespace sparta::serialization::checkpoint
          * and false if not. If id == Checkpoint::UNIDENTIFIED_CHECKPOINT,
          * always returns false
          */
-        virtual bool hasCheckpoint(chkpt_id_t id) const noexcept {
-            return findCheckpoint_(id) != nullptr;
+        bool hasCheckpoint(chkpt_id_t id) const noexcept {
+            return store_.hasCheckpoint(id);
         }
 
         /*!
@@ -506,9 +491,7 @@ namespace sparta::serialization::checkpoint
          * \param o ostream to dump to
          */
         void dumpList(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                o << cp.second->stringize() << std::endl;
-            }
+            store_.dumpList(o);
         }
 
         /*!
@@ -517,10 +500,7 @@ namespace sparta::serialization::checkpoint
          * \param o ostream to dump to
          */
         void dumpData(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                cp.second->dumpData(o);
-                o << std::endl;
-            }
+            store_.dumpData(o);
         }
 
         /*!
@@ -530,11 +510,7 @@ namespace sparta::serialization::checkpoint
          * \param o ostream to dump to
          */
         void dumpAnnotatedData(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                o << cp.second->stringize() << std::endl;
-                cp.second->dumpData(o);
-                o << std::endl;
-            }
+            store_.dumpAnnotatedData(o);
         }
 
         /*!
@@ -663,11 +639,6 @@ namespace sparta::serialization::checkpoint
         virtual Checkpoint* findCheckpoint_(chkpt_id_t id) noexcept = 0;
 
         /*!
-         * \brief const variant of findCheckpoint_
-         */
-        virtual const Checkpoint* findCheckpoint_(chkpt_id_t id) const noexcept = 0;
-
-        /*!
          * \brief Create a head node.
          * \pre ArchDatas for tree root are already enumerated
          * \pre Tree of getRoot() is already finalized
@@ -749,14 +720,9 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief All checkpoints sorted by ascending tick number (or
-         * equivalently ascending checkpoint ID since both are monotonically
-         * increasing)
-         *
-         * This map must still be explicitly torn down in reverse order by a
-         * subclass of Checkpointer
+         * \brief Store of checkpoints (in memory, on disk, etc.)
          */
-        std::map<chkpt_id_t, std::unique_ptr<Checkpoint>> chkpts_;
+        BackingStore store_;
 
         /*!
          * \brief Scheduler whose tick count will be set and read. Cannnot be
@@ -784,6 +750,9 @@ namespace sparta::serialization::checkpoint
 
             // Recursively walk the tree and add all ArchDatas to adatas_
             recursAddArchData_(&root_, adatas_helper);
+
+            // Give to the store for traceValue() support.
+            store_.setArchDatas(adatas_);
         }
 
         /*!
@@ -818,7 +787,7 @@ namespace sparta::serialization::checkpoint
 
         /*!
          * \brief Head checkpoint. This is the first checkpoint taken but cannot
-         * be deleted. Head checkpoint memory is owned by chkpts_.
+         * be deleted. Head checkpoint memory is owned by the backing store.
          */
         Checkpoint* head_;
 
@@ -844,13 +813,15 @@ namespace sparta::serialization::checkpoint
 
 
 //! ostream insertion operator for sparta::Register
-inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::checkpoint::Checkpointer& cpr){
+template <typename Store>
+inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::checkpoint::Checkpointer<Store>& cpr){
     o << cpr.stringize();
     return o;
 }
 
 //! ostream insertion operator for sparta::Register
-inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::checkpoint::Checkpointer* cpr){
+template <typename Store>
+inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::checkpoint::Checkpointer<Store>* cpr){
     if(cpr == 0){
         o << "null";
     }else{
