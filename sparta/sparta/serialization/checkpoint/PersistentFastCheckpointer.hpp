@@ -21,7 +21,7 @@ namespace sparta::serialization::checkpoint
      * i.e. implements an interface to save checkpoints to disk
      *
      * Used in conjunction with the fast checkpointer (which saves
-     * checkpoints to memory), this class enables user the save the
+     * checkpoints to memory), this class enables users to save the
      * checkpoints to disk for loading later.
      */
     class PersistentFastCheckpointer : public FastCheckpointer<>

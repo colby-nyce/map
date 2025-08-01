@@ -29,54 +29,55 @@ namespace sparta::serialization::checkpoint
         ////////////////////////////////////////////////////////////////////////
 
         checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept override {
-            auto itr = chkpts_.find(id);
-            if (itr != chkpts_.end()) {
-                return static_cast<checkpoint_type*>(itr->second.get());
+            auto itr = chkpts_umap_.find(id);
+            if (itr != chkpts_umap_.end()) {
+                return itr->second;
             }
             return nullptr;
         }
 
-        const checkpoint_type* findCheckpoint(chkpt_id_t id) const noexcept override {
-            auto itr = chkpts_.find(id);
-            if (itr != chkpts_.end()) {
-                return static_cast<const checkpoint_type*>(itr->second.get());
-            }
-            return nullptr;
+        bool hasCheckpoint(chkpt_id_t id) const noexcept override {
+            return chkpts_umap_.find(id) != chkpts_umap_.end();
         }
 
         uint64_t getTotalMemoryUse() const {
             uint64_t mem = 0;
-            for (auto& cp : chkpts_) {
-                mem += cp.second->getTotalMemoryUse();
+            for (auto& cp : chkpts_umap_) {
+                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp.second);
+                mem += dcp->getTotalMemoryUse();
             }
             return mem;
         }
 
         uint64_t getContentMemoryUse() const {
             uint64_t mem = 0;
-            for (auto& cp : chkpts_) {
-                mem += cp.second->getContentMemoryUse();
+            for (auto& cp : chkpts_umap_) {
+                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp.second);
+                mem += dcp->getContentMemoryUse();
             }
             return mem;
         }
 
         void dumpList(std::ostream& o) const {
             for (auto& cp : chkpts_) {
-                o << cp.second->stringize() << std::endl;
+                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp.second.get());
+                o << dcp->stringize() << std::endl;
             }
         }
 
         void dumpData(std::ostream& o) const {
             for (auto& cp : chkpts_) {
-                cp.second->dumpData(o);
+                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp.second.get());
+                dcp->dumpData(o);
                 o << std::endl;
             }
         }
 
         void dumpAnnotatedData(std::ostream& o) const {
             for (auto& cp : chkpts_) {
-                o << cp.second->stringize() << std::endl;
-                cp.second->dumpData(o);
+                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp.second.get());
+                o << dcp->stringize() << std::endl;
+                dcp->dumpData(o);
                 o << std::endl;
             }
         }
@@ -86,8 +87,8 @@ namespace sparta::serialization::checkpoint
             for (auto& p : chkpts_) {
                 const Checkpoint* cp = p.second.get();
                 const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp);
-                if (cp->getTick() == t && !dcp->isFlaggedDeleted()) {
-                    results.push_back(cp->getID());
+                if (dcp->getTick() == t && !dcp->isFlaggedDeleted()) {
+                    results.push_back(dcp->getID());
                 }
             }
             return results;
@@ -109,10 +110,15 @@ namespace sparta::serialization::checkpoint
             if (auto it = chkpts_.find(id); it != chkpts_.end()) {
                 chkpts_.erase(it);
             }
+            if (auto it = chkpts_umap_.find(id); it != chkpts_umap_.end()) {
+                chkpts_umap_.erase(it);
+            }
         }
 
         void insert(std::unique_ptr<Checkpoint> chkpt) {
-            auto id = chkpt->getID();
+            auto c = static_cast<checkpoint_type*>(chkpt.get());
+            auto id = c->getID();
+            chkpts_umap_[id] = c;
             chkpts_[id] = std::move(chkpt);
         }
 
@@ -158,6 +164,12 @@ namespace sparta::serialization::checkpoint
          * subclass of Checkpointer
          */
         std::map<chkpt_id_t, std::unique_ptr<Checkpoint>> chkpts_;
+
+        /*!
+         * \brief Cache of checkpoints in an unordered map for fast implementation
+         * of Checkpoint::operator->()
+         */
+        std::unordered_map<chkpt_id_t, checkpoint_type*> chkpts_umap_;
 
         /*!
          * \brief ArchDatas required to checkpoint for this checkpointiner based

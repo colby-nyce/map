@@ -5,5 +5,6 @@ sparta_add_test_executable(FastCheckpoint_test FastCheckpoint_test.cpp)
 sparta_test(FastCheckpoint_test FastCheckpoint_test_RUN)
 
 add_subdirectory(FILEStream)
+add_subdirectory(DatabaseFastCheckpoint)
 add_subdirectory(PersistentFastCheckpoint)
 

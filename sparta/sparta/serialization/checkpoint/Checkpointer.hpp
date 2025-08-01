@@ -73,13 +73,17 @@ namespace sparta::serialization::checkpoint
          * checkpointer will not touch attempt to roll back the scheduler on
          * checkpoint restores
          */
-        Checkpointer(TreeNode& root, sparta::Scheduler* sched=nullptr) :
+        template <typename... BackingStoreArgs>
+        Checkpointer(TreeNode& root, sparta::Scheduler* sched=nullptr, BackingStoreArgs&&... args) :
+            store_(std::forward<BackingStoreArgs>(args)...),
             sched_(sched),
             root_(root),
             head_(nullptr),
             current_(nullptr),
             total_chkpts_created_(0)
-        { }
+        {
+            static_assert(std::is_base_of_v<CheckpointAccessor, BackingStore>);
+        }
 
         /*!
          * \brief Destructor
@@ -379,8 +383,8 @@ namespace sparta::serialization::checkpoint
          * and false if not. If id == Checkpoint::UNIDENTIFIED_CHECKPOINT,
          * always returns false
          */
-        virtual bool hasCheckpoint(chkpt_id_t id) const noexcept {
-            return findCheckpoint_(id) != nullptr;
+        bool hasCheckpoint(chkpt_id_t id) const noexcept {
+            return store_.hasCheckpoint(id);
         }
 
         /*!
@@ -633,11 +637,6 @@ namespace sparta::serialization::checkpoint
          * \todo Faster lookup?
          */
         virtual Checkpoint* findCheckpoint_(chkpt_id_t id) noexcept = 0;
-
-        /*!
-         * \brief const variant of findCheckpoint_
-         */
-        virtual const Checkpoint* findCheckpoint_(chkpt_id_t id) const noexcept = 0;
 
         /*!
          * \brief Create a head node.

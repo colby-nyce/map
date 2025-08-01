@@ -13,7 +13,7 @@
 #include "sparta/functional/RegisterSet.hpp"
 #include "sparta/memory/MemoryObject.hpp"
 #include "sparta/serialization/checkpoint/FastCheckpointer.hpp"
-#include "sparta/serialization/checkpoint/DatabaseBackingStore.hpp"
+#include "simdb/sqlite/DatabaseManager.hpp"
 
 #include "sparta/utils/SpartaTester.hpp"
 
@@ -68,7 +68,6 @@ public:
 };
 
 //! \brief General test for checkpointing behavior. Creates/deletes/loads, etc.
-template <typename BackingStore>
 void generalTest()
 {
     sparta::Scheduler sched;
@@ -102,7 +101,7 @@ void generalTest()
 
     // Create a checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, &sched);
+    FastCheckpointer<> fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -482,9 +481,8 @@ void generalTest()
  *
  *  This logic belongs in a Simulation class
  */
-template <typename BackingStore>
 void restoreCheckpoint(std::stack<chkpt_id_t>& ckpts,
-                       FastCheckpointer<BackingStore>& fcp,
+                       FastCheckpointer<>& fcp,
                        sparta::Scheduler* sched,
                        chkpt_id_t to_restore) {
     assert(sched);
@@ -510,7 +508,6 @@ void restoreCheckpoint(std::stack<chkpt_id_t>& ckpts,
 
 
 //! \brief Uses a stack to keep track of checkpoint IDs much like GPro would
-template <typename BackingStore>
 void stackTest()
 {
     std::cout << "Checkpoint test" << std::endl;
@@ -533,7 +530,7 @@ void stackTest()
 
     // Create checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, sched);
+    FastCheckpointer<> fcp(root, sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -624,7 +621,6 @@ void stackTest()
     root.enterTeardown();
 }
 
-template <typename BackingStore>
 void deletionTest1()
 {
     sparta::Scheduler sched;
@@ -658,7 +654,7 @@ void deletionTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, &sched);
+    FastCheckpointer<> fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -720,7 +716,6 @@ void deletionTest1()
     clocks.enterTeardown();
 }
 
-template <typename BackingStore>
 void deletionTest2()
 {
     sparta::Scheduler sched;
@@ -754,7 +749,7 @@ void deletionTest2()
 
     // Create a checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, &sched);
+    FastCheckpointer<> fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -819,7 +814,6 @@ void deletionTest2()
     clocks.enterTeardown();
 }
 
-template <typename BackingStore>
 void deletionTest3()
 {
     RootTreeNode clocks("clocks");
@@ -853,7 +847,7 @@ void deletionTest3()
 
     // Create a checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, &sched);
+    FastCheckpointer<> fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -905,7 +899,6 @@ void deletionTest3()
     clocks.enterTeardown();
 }
 
-template <typename BackingStore>
 void speedTest1()
 {
     RootTreeNode clocks("clocks");
@@ -939,7 +932,7 @@ void speedTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer<BackingStore> fcp(root, &sched);
+    FastCheckpointer<> fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -971,14 +964,13 @@ void speedTest1()
     clocks.enterTeardown();
 }
 
-template <typename BackingStore>
 void runAllTests()
 {
-    generalTest<BackingStore>();
-    stackTest<BackingStore>();
-    deletionTest1<BackingStore>();
-    deletionTest2<BackingStore>();
-    deletionTest3<BackingStore>();
+    generalTest();
+    stackTest();
+    deletionTest1();
+    deletionTest2();
+    deletionTest3();
 }
 
 int main()
@@ -991,17 +983,13 @@ int main()
                                                                  sparta::log::categories::WARN,
                                                                  "warnings.log"));
 
-    using sparta::serialization::checkpoint::MemoryBackingStore;
-    runAllTests<MemoryBackingStore>();
-
-    //using sparta::serialization::checkpoint::DatabaseBackingStore;
-    //runAllTests<DatabaseBackingStore>();
+    runAllTests();
 
     clock_t start = clock();
     std::array<clock_t, 5> times{{0,0,0,0,0}};
     for(uint32_t i = 0; i < times.size(); i++){
         clock_t istart = clock();
-        speedTest1<MemoryBackingStore>();
+        speedTest1();
         clock_t idelta = clock() - istart;
         times[i] = idelta;
     }

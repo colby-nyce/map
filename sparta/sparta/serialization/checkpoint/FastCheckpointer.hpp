@@ -89,15 +89,15 @@ namespace sparta::serialization::checkpoint
          * \param sched Scheduler to read and restart on checkpoint restore (if
          *              not nullptr)
          */
-        FastCheckpointer(TreeNode& root, Scheduler* sched=nullptr) :
-            Checkpointer<BackingStore>(root, sched),
+        template <typename... BackingStoreArgs>
+        FastCheckpointer(TreeNode& root, Scheduler* sched=nullptr, BackingStoreArgs&&... args) :
+            Checkpointer<BackingStore>(root, sched, std::forward<BackingStoreArgs>(args)...),
             snap_thresh_(DEFAULT_SNAPSHOT_THRESH),
             next_chkpt_id_(checkpoint_type::MIN_CHECKPOINT),
             num_alive_checkpoints_(0),
             num_alive_snapshots_(0),
             num_dead_checkpoints_(0)
         {
-            static_assert(std::is_base_of_v<CheckpointAccessor, BackingStore>);
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -305,7 +305,7 @@ namespace sparta::serialization::checkpoint
             if(!getHead()){
                 return results;
             }
-            const checkpoint_type* d = findCheckpoint_(id);
+            const checkpoint_type* d = nullptr;//TODO cnyce findCheckpoint_(id);
             if(!d){
                 throw CheckpointError("There is no checkpoint with ID ") << id;
             }
@@ -521,13 +521,6 @@ namespace sparta::serialization::checkpoint
          * \todo Faster lookup?
          */
         checkpoint_type* findCheckpoint_(chkpt_id_t id) noexcept override {
-            return store_.findCheckpoint(id);
-        }
-
-        /*!
-         * \brief const variant of findCheckpoint_
-         */
-        const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept override {
             return store_.findCheckpoint(id);
         }
 

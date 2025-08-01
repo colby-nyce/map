@@ -33,7 +33,7 @@ namespace sparta::serialization::checkpoint
     public:
         virtual ~CheckpointAccessor() = default;
         virtual Checkpoint* findCheckpoint(chkpt_id_t id) noexcept = 0;
-        virtual const Checkpoint* findCheckpoint(chkpt_id_t id) const noexcept = 0;
+        virtual bool hasCheckpoint(chkpt_id_t id) const = 0;
         virtual std::vector<chkpt_id_t> getCheckpointsAt(tick_t t) const = 0;
         virtual std::vector<chkpt_id_t> getCheckpoints() const = 0;
     };
@@ -250,6 +250,18 @@ namespace sparta::serialization::checkpoint
          * descended from this
          */
         const std::vector<Checkpoint*>& getNexts() const noexcept { return nexts_; }
+
+        /*!
+         * \brief Attempts to use the checkpoints will always go through the
+         * backing store to get the checkpoint. We do not return 'this' since
+         * the checkpoint could have been deallocated depending on how the
+         * backing store is designed. The stores themselves have the same
+         * lifetime as the checkpointers.
+         */
+        Checkpoint* operator->()
+        {
+            return chkpt_accessor_.findCheckpoint(chkpt_id_);
+        }
 
         ////////////////////////////////////////////////////////////////////////
         //! @}
