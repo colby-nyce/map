@@ -347,6 +347,7 @@ namespace sparta::serialization::checkpoint
 
     } // namespace storage
 
+    template <typename checkpoint_type>
     class FastCheckpointer;
 
     /*!
@@ -421,8 +422,9 @@ namespace sparta::serialization::checkpoint
                         chkpt_id_t id,
                         tick_t tick,
                         DeltaCheckpoint* prev_delta,
-                        bool is_snapshot) :
-            Checkpoint(id, tick, prev_delta),
+                        bool is_snapshot,
+                        CheckpointBackingStore* store) :
+            Checkpoint(id, tick, prev_delta, store),
             deleted_id_(UNIDENTIFIED_CHECKPOINT),
             is_snapshot_(is_snapshot)
         {
@@ -445,6 +447,7 @@ namespace sparta::serialization::checkpoint
         }
 
         //! DeltaCheckpoints can only be constructed by the FastCheckpointer
+        template <typename checkpoint_type>
         friend class FastCheckpointer;
 
     public:
@@ -456,11 +459,12 @@ namespace sparta::serialization::checkpoint
          * Prints a warning if checkpoint was not allowed to be deleted
          * \see canDelete
          */
-        virtual ~DeltaCheckpoint() {
+        void disconnect() override {
             if(!canDelete()){
                 std::cerr << "WARNING: DeltaCheckpoint " << getID()
                           << " being destructed without being allowed to delete" << std::endl;
             }
+            Checkpoint::disconnect();
         }
 
         ////////////////////////////////////////////////////////////////////////

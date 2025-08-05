@@ -15,7 +15,27 @@
 
 namespace sparta::serialization::checkpoint
 {
-    class FastCheckpointer;
+
+    //! \brief tick_t Tick type to which checkpoints will refer
+    typedef sparta::Scheduler::Tick tick_t;
+
+    //! \brief tick_t Tick type to which checkpoints will refer
+    typedef uint64_t chkpt_id_t;
+
+    //! \brief Forward declarations
+    class Checkpoint;
+
+    //! \brief Base class for all checkpoint backing stores.
+    class CheckpointBackingStore
+    {
+    public:
+        virtual ~CheckpointBackingStore() = default;
+        virtual chkpt_id_t getPrev(chkpt_id_t id) const = 0;
+        virtual void setPrev(chkpt_id_t id, chkpt_id_t prev_id) = 0;
+        virtual void addNext(chkpt_id_t id, chkpt_id_t next_id) = 0;
+        virtual void removeNext(chkpt_id_t id, chkpt_id_t next_id) = 0;
+        virtual std::vector<chkpt_id_t> getNexts(chkpt_id_t id) const = 0;
+    };
 
     /*!
      * \brief Single checkpoint object interface with a tick number and an ID
@@ -28,20 +48,6 @@ namespace sparta::serialization::checkpoint
     class Checkpoint
     {
     public:
-
-        //! \name Local Types
-        //! @{
-        ////////////////////////////////////////////////////////////////////////
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef sparta::Scheduler::Tick tick_t;
-
-        //! \brief tick_t Tick type to which checkpoints will refer
-        typedef uint64_t chkpt_id_t;
-
-        ////////////////////////////////////////////////////////////////////////
-        //! @}
-
         /*!
          * \brief Indicates the smallest valid checkpoint id
          */
@@ -74,35 +80,17 @@ namespace sparta::serialization::checkpoint
          */
         Checkpoint(chkpt_id_t id,
                    tick_t tick,
-                   Checkpoint* prev) :
+                   Checkpoint* prev,
+                   CheckpointBackingStore* store) :
             tick_(tick),
             chkpt_id_(id),
-            prev_(prev)
+            prev_(prev),
+            store_(store)
         { }
 
     public:
 
-
-        /*!
-         * \brief Destructor
-         *
-         * Removes this checkpoint from the chain and patches chain between prev
-         * and each item in the nexts list
-         */
-        virtual ~Checkpoint() {
-            if(getPrev()){
-                getPrev()->removeNext(this);
-            }
-
-            // Reconnect deltas from this checkpoint to the prev (even if nullptr)
-            for(auto& d : getNexts()){
-                d->setPrev(getPrev());
-                if(getPrev()){
-                    getPrev()->addNext(d);
-                }
-            }
-
-        }
+        virtual ~Checkpoint() = default;
 
         ////////////////////////////////////////////////////////////////////////
         //! @}
@@ -177,7 +165,7 @@ namespace sparta::serialization::checkpoint
 
         /*!
          * \brief Sets the previous checkpoint of this checkpoint to \a prev
-         * \param prev New previou checkpoint. Overwrites previous
+         * \param prev New previous checkpoint. Overwrites previous
          * This will often be accompanied by a call to addNext on the
          * \a prev argument
          */
@@ -242,6 +230,26 @@ namespace sparta::serialization::checkpoint
          */
         const std::vector<Checkpoint*>& getNexts() const noexcept { return nexts_; }
 
+        /*!
+         * \brief Called just before destructor.
+         *
+         * Removes this checkpoint from the chain and patches chain between prev
+         * and each item in the nexts list
+         */
+        virtual void disconnect() {
+            if(getPrev()){
+                getPrev()->removeNext(this);
+            }
+
+            // Reconnect deltas from this checkpoint to the prev (even if nullptr)
+            for(auto& d : getNexts()){
+                d->setPrev(getPrev());
+                if(getPrev()){
+                    getPrev()->addNext(d);
+                }
+            }
+        }
+
         ////////////////////////////////////////////////////////////////////////
         //! @}
 
@@ -267,6 +275,8 @@ namespace sparta::serialization::checkpoint
         std::vector<Checkpoint*> nexts_;
 
         Checkpoint* prev_; //!< Previous checkpoint (earlier) than this. *this contains changes following prev.
+
+        CheckpointBackingStore* store_;
     };
 
 } // namespace sparta::serialization::checkpoint
@@ -291,6 +301,6 @@ inline std::ostream& operator<<(std::ostream& o, const sparta::serialization::ch
 //! \brief Required in simulator source to define some globals.
 #define SPARTA_CHECKPOINT_BODY                                            \
     namespace sparta{ namespace serialization { namespace checkpoint {    \
-        const Checkpoint::chkpt_id_t Checkpoint::MIN_CHECKPOINT;        \
-        const Checkpoint::chkpt_id_t Checkpoint::UNIDENTIFIED_CHECKPOINT; \
+        const chkpt_id_t Checkpoint::MIN_CHECKPOINT;        \
+        const chkpt_id_t Checkpoint::UNIDENTIFIED_CHECKPOINT; \
     }}}
