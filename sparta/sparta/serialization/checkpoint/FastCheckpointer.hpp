@@ -288,6 +288,51 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
+         * \brief Finds the latest checkpoint at or before the given tick
+         * starting at the \a from checkpoint and working backward.
+         * If no checkpoints before or at tick are found, returns nullptr.
+         * \param tick Tick to search for
+         * \param from Checkpoint at which to begin searching for a tick.
+         * Must be a valid checkpoint known by this checkpointer.
+         * See hasCheckpoint.
+         * \return The latest checkpoint with a tick number less than or equal
+         * to the \a tick argument. Returns nullptr if no checkpoints before \a
+         * tick were found. It is possible for the checkpoint identified by \a
+         * from could be returned.
+         * \warning This is not a high-performance method. Generally,
+         * a client of this interface knows a paticular ID.
+         * \throw CheckpointError if \a from does not refer to a valid
+         * checkpoint.
+         */
+        checkpoint_type* findLatestCheckpointAtOrBefore(tick_t tick,
+                                                        chkpt_id_t from) override {
+            checkpoint_type* d = findCheckpoint_(from);
+            if(!d){
+                throw CheckpointError("There is no checkpoint with ID ") << from;
+            }
+
+            // Search backward
+            do{
+                if(d->getTick() <= tick){
+                    break;
+                }
+                d = static_cast<checkpoint_type*>(d->getPrev());
+            }while(d);
+
+            return d;
+        }
+
+        /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept {
+            return findCheckpoint_(id);
+        }
+
+        /*!
          * \brief Tests whether this checkpoint manager has a checkpoint with
          * the given id.
          * \return True if id refers to a checkpoint held by this checkpointer
@@ -296,14 +341,6 @@ namespace sparta::serialization::checkpoint
          */
         bool hasCheckpoint(chkpt_id_t id) const noexcept override {
             return findCheckpoint_(id) != nullptr;
-        }
-
-        /*!
-         * \brief Gets a checkpoint through findCheckpoint interface casted to
-         * the type of Checkpoint subclass used by this class.
-         */
-        checkpoint_type* findInternalCheckpoint(chkpt_id_t id) {
-            return static_cast<checkpoint_type*>(findCheckpoint_(id));
         }
 
         ////////////////////////////////////////////////////////////////////////
