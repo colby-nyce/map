@@ -39,7 +39,7 @@ using sparta::BE; // Big
 using sparta::serialization::checkpoint::Checkpointer;
 using sparta::serialization::checkpoint::MemoryFastCheckpointer;
 using sparta::serialization::checkpoint::DeltaCheckpoint;
-using sparta::serialization::checkpoint::chkpt_id_t;
+using chkpt_id_t = typename sparta::serialization::checkpoint::Checkpoint::chkpt_id_t;
 
 static const uint16_t HINT_NONE=0;
 

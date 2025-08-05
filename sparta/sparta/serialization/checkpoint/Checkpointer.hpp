@@ -57,6 +57,19 @@ namespace sparta::serialization::checkpoint
     {
     public:
 
+        //! \name Local Types
+        //! @{
+        ////////////////////////////////////////////////////////////////////////
+
+        //! \brief tick_t Tick type to which checkpoints will refer
+        typedef Checkpoint::tick_t tick_t;
+
+        //! \brief tick_t Tick type to which checkpoints will refer
+        typedef Checkpoint::chkpt_id_t chkpt_id_t;
+
+        ////////////////////////////////////////////////////////////////////////
+        //! @}
+
         //! \name Construction & Initialization
         //! @{
         ////////////////////////////////////////////////////////////////////////

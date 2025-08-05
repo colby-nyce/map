@@ -167,8 +167,8 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        chkpt_id_t save(std::ostream& outf) {
-            chkpt_id_t checkpoint_id = createCheckpoint(true);
+        FastCheckpointer::chkpt_id_t save(std::ostream& outf) {
+            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(true);
             save_(outf);
             return checkpoint_id;
         }
@@ -179,8 +179,8 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        chkpt_id_t save(std::string filename) {
-            chkpt_id_t checkpoint_id = createCheckpoint(true);
+        FastCheckpointer::chkpt_id_t save(std::string filename) {
+            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(true);
             std::ofstream outf(filename, std::ofstream::out | std::ofstream::binary | std::ofstream::trunc);
             save_(outf);
             outf.close();
@@ -194,9 +194,9 @@ namespace sparta::serialization::checkpoint
          *
          * \return The checkpoint ID
          */
-        chkpt_id_t save() {
+        FastCheckpointer::chkpt_id_t save() {
             const bool force_snapshot = true;
-            chkpt_id_t checkpoint_id = createCheckpoint(force_snapshot);
+            FastCheckpointer::chkpt_id_t checkpoint_id = createCheckpoint(force_snapshot);
             std::ostringstream chkpt_filename;
             chkpt_filename << prefix_ << "."
                            << checkpoint_id
