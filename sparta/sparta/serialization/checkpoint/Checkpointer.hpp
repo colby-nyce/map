@@ -378,6 +378,14 @@ namespace sparta::serialization::checkpoint
         virtual Checkpoint* findCheckpoint(chkpt_id_t id) noexcept = 0;
 
         /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        virtual const Checkpoint* findCheckpoint(chkpt_id_t id) const noexcept = 0;
+
+        /*!
          * \brief Tests whether this checkpoint manager has a checkpoint with
          * the given id.
          * \return True if id refers to a checkpoint held by this checkpointer
@@ -644,8 +652,8 @@ namespace sparta::serialization::checkpoint
          */
         virtual chkpt_id_t createCheckpoint_(bool force_snapshot=false) = 0;
 
-        virtual void dumpCheckpointNode_(const Checkpoint* cp, std::ostream& o) const {
-            o << cp->getID();
+        virtual void dumpCheckpointNode_(const Checkpoint* chkpt, std::ostream& o) const {
+            o << chkpt->getID();
         }
 
         /*!

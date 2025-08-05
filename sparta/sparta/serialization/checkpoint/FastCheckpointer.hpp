@@ -94,6 +94,22 @@ namespace sparta::serialization::checkpoint
             num_dead_checkpoints_(0)
         { }
 
+        bool hasCheckpoint(chkpt_id_t id) const noexcept override {
+            return findCheckpoint_(id) != nullptr;
+        }
+
+        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept override {
+            return findCheckpoint_(id);
+        }
+
+        const checkpoint_type* findCheckpoint(chkpt_id_t id) const noexcept override {
+            return findCheckpoint_(id);
+        }
+
+        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) = 0;
+
+        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const = 0;
+
         ////////////////////////////////////////////////////////////////////////
         //! @}
 
@@ -152,7 +168,7 @@ namespace sparta::serialization::checkpoint
         void deleteCheckpoint(chkpt_id_t id) override {
 
             // Flag checkpoint as deleted
-            checkpoint_type* d = findCheckpoint_(id);
+            checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("Could not delete checkpoint ID=")
                     << id << " because no checkpoint by this ID was found";
@@ -189,7 +205,7 @@ namespace sparta::serialization::checkpoint
          * tick using Scheduler::restartAt
          */
         void loadCheckpoint(chkpt_id_t id) override {
-            checkpoint_type* d = findCheckpoint_(id);
+            checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("Could not load checkpoint ID=")
                     << id << " because no checkpoint by this ID was found";
@@ -220,7 +236,7 @@ namespace sparta::serialization::checkpoint
          */
         bool checkpointExists(chkpt_id_t id) {
             bool exists = false;
-            checkpoint_type* d = findCheckpoint_(id);
+            checkpoint_type* d = findCheckpoint(id);
             if(d){
                 exists = true;
             }
@@ -276,7 +292,7 @@ namespace sparta::serialization::checkpoint
             if(!getHead()){
                 return results;
             }
-            const checkpoint_type* d = findCheckpoint_(id);
+            const checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("There is no checkpoint with ID ") << id;
             }
@@ -306,7 +322,7 @@ namespace sparta::serialization::checkpoint
          */
         checkpoint_type* findLatestCheckpointAtOrBefore(tick_t tick,
                                                         chkpt_id_t from) override {
-            checkpoint_type* d = findCheckpoint_(from);
+            checkpoint_type* d = findCheckpoint(from);
             if(!d){
                 throw CheckpointError("There is no checkpoint with ID ") << from;
             }
@@ -320,27 +336,6 @@ namespace sparta::serialization::checkpoint
             }while(d);
 
             return d;
-        }
-
-        /*!
-         * \brief Finds a checkpoint by its ID
-         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
-         * deleted
-         * \return Checkpoint with ID of \a id if found or nullptr if not found
-         */
-        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept {
-            return findCheckpoint_(id);
-        }
-
-        /*!
-         * \brief Tests whether this checkpoint manager has a checkpoint with
-         * the given id.
-         * \return True if id refers to a checkpoint held by this checkpointer
-         * and false if not. If id == Checkpoint::UNIDENTIFIED_CHECKPOINT,
-         * always returns false
-         */
-        bool hasCheckpoint(chkpt_id_t id) const noexcept override {
-            return findCheckpoint_(id) != nullptr;
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -363,7 +358,7 @@ namespace sparta::serialization::checkpoint
          * \brief Forwards debug/trace info onto checkpoint by ID
          */
         void traceValue(std::ostream& o, chkpt_id_t id, const ArchData* container, uint32_t offset, uint32_t size) override {
-            checkpoint_type* dcp = findCheckpoint_(id);
+            checkpoint_type* dcp = findCheckpoint(id);
             o << "trace: Searching for 0x" << std::hex << offset << " (" << std::dec << size
               << " bytes) in ArchData " << (const void*)container << " when loading checkpoint "
               << std::dec << id << std::endl;
@@ -496,20 +491,6 @@ namespace sparta::serialization::checkpoint
             // Found nothing alive.
             return false;
         }
-
-        /*!
-         * \brief Attempts to find a checkpoint within this checkpointer by ID.
-         * \param id Checkpoint ID to search for
-         * \return Pointer to found checkpoint with matchind ID. If not found,
-         * returns nullptr.
-         * \todo Faster lookup?
-         */
-        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) noexcept = 0;
-
-        /*!
-         * \brief const variant of findCheckpoint_
-         */
-        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept = 0;
 
         /*!
          * \brief Implements Checkpointer::dumpCheckpointNode_

@@ -158,12 +158,16 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief const variant of findCheckpoint_
+         * \brief Attempts to find a checkpoint within this checkpointer by ID.
+         * \param id Checkpoint ID to search for
+         * \return Pointer to found checkpoint with matchind ID. If not found,
+         * returns nullptr.
+         * \todo Faster lookup?
          */
         const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept override {
             auto itr = chkpts_.find(id);
             if (itr != chkpts_.end()) {
-                return static_cast<checkpoint_type*>(itr->second.get());
+                return static_cast<const checkpoint_type*>(itr->second.get());
             }
             return nullptr;
         }

@@ -456,7 +456,7 @@ namespace sparta::serialization::checkpoint
          * Prints a warning if checkpoint was not allowed to be deleted
          * \see canDelete
          */
-        ~DeltaCheckpoint() {
+        virtual ~DeltaCheckpoint() {
             if(!canDelete()){
                 std::cerr << "WARNING: DeltaCheckpoint " << getID()
                           << " being destructed without being allowed to delete" << std::endl;
