@@ -19,11 +19,8 @@ namespace sparta::serialization::checkpoint
     //! \brief tick_t Tick type to which checkpoints will refer
     typedef sparta::Scheduler::Tick tick_t;
 
-    //! \brief tick_t Tick type to which checkpoints will refer
+    //! \brief tick_t Checkpoint ID type to which checkpoints will refer
     typedef uint64_t chkpt_id_t;
-
-    //! \brief Forward declarations
-    class Checkpoint;
 
     /*!
      * \brief Single checkpoint object interface with a tick number and an ID
@@ -76,7 +73,25 @@ namespace sparta::serialization::checkpoint
 
     public:
 
-        virtual ~Checkpoint() = default;
+        /*!
+         * \brief Destructor.
+         *
+         * Removes this checkpoint from the chain and patches chain between prev
+         * and each item in the nexts list
+         */
+        virtual ~Checkpoint() {
+            if(getPrev()){
+                getPrev()->removeNext(this);
+            }
+
+            // Reconnect deltas from this checkpoint to the prev (even if nullptr)
+            for(auto& d : getNexts()){
+                d->setPrev(getPrev());
+                if(getPrev()){
+                    getPrev()->addNext(d);
+                }
+            }
+        }
 
         ////////////////////////////////////////////////////////////////////////
         //! @}
@@ -215,26 +230,6 @@ namespace sparta::serialization::checkpoint
          * descended from this
          */
         const std::vector<Checkpoint*>& getNexts() const noexcept { return nexts_; }
-
-        /*!
-         * \brief Called just before destructor.
-         *
-         * Removes this checkpoint from the chain and patches chain between prev
-         * and each item in the nexts list
-         */
-        virtual void disconnect() {
-            if(getPrev()){
-                getPrev()->removeNext(this);
-            }
-
-            // Reconnect deltas from this checkpoint to the prev (even if nullptr)
-            for(auto& d : getNexts()){
-                d->setPrev(getPrev());
-                if(getPrev()){
-                    getPrev()->addNext(d);
-                }
-            }
-        }
 
         ////////////////////////////////////////////////////////////////////////
         //! @}

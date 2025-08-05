@@ -267,6 +267,30 @@ namespace sparta::serialization::checkpoint
         virtual void loadCheckpoint(chkpt_id_t id) = 0;
 
         /*!
+         * \brief Forgets the current checkpoint and current checkpoint
+         * (resetting to the head checkpoint) so that checkpoints can be taken
+         * at a different time without assuming simulation state continutiy with
+         * this checkpointers. This is ONLY to be used by a simulator IFF another
+         * checkpointer restores state at another cycle or the simulator resets
+         * but this checkpointer's tree is still expected to exist.
+         * \warning Read the documentation for this method carefully. If it is
+         * being used in a simulator with only 1 checkpointer operating at a
+         * time, it is very likely that loadCheckpoint should be used instead
+         * of this.
+         * \post getCurrentTick() and getCurrentID() will refer to the head.
+         * \note No checkpoints are deleted or created or reorganized in
+         * any way.
+         * \note New checkpoints on this scheduler must still be created at a
+         * tick number >= this scheduler's head checkpoint tick.
+         * \note has no effect if the head has no been created.
+         */
+        virtual void forgetCurrent() {
+            if(head_){
+                current_ = head_;
+            }
+        }
+
+        /*!
          * \brief Gets all checkpoints taken at tick t on any timeline.
          * \param t Tick number at which checkpoints should found.
          * \return vector of valid checkpoint IDs (never
