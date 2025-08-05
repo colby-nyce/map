@@ -13,7 +13,6 @@
 #include "sparta/utils/SpartaAssert.hpp"
 
 #include "sparta/serialization/checkpoint/DeltaCheckpoint.hpp"
-#include "sparta/serialization/checkpoint/MemoryBackingStore.hpp"
 
 //! Default threshold for creating snapshots
 #ifndef DEFAULT_SNAPSHOT_THRESH
@@ -63,11 +62,10 @@ namespace sparta::serialization::checkpoint
      * \todo Compression
      * \todo Saving to disk using a templated checkpoint object storage class (allowing for non-binary)
      */
-    template <typename Store = MemoryBackingStore<DeltaCheckpoint<storage::VectorStorage>>>
     class FastCheckpointer : public Checkpointer
     {
     public:
-        using checkpoint_type = typename Store::checkpoint_type;
+        using checkpoint_type = DeltaCheckpoint<storage::VectorStorage>;
 
         //! \name Construction & Initialization
         //! @{
@@ -95,15 +93,6 @@ namespace sparta::serialization::checkpoint
             num_alive_snapshots_(0),
             num_dead_checkpoints_(0)
         { }
-
-        /*!
-         * \brief Destructor
-         *
-         * Frees all checkpoint data
-         */
-        ~FastCheckpointer() {
-            store_.deleteAll();
-        }
 
         ////////////////////////////////////////////////////////////////////////
         //! @}
@@ -140,24 +129,6 @@ namespace sparta::serialization::checkpoint
         //! \name Checkpointing Actions & Queries
         //! @{
         ////////////////////////////////////////////////////////////////////////
-
-        /*!
-         * \brief Computes and returns the memory usage by this checkpointer at
-         * this moment including any framework overhead
-         * \note This is an approxiation and does not include some of
-         * minimal dynamic overhead from stl containers.
-         */
-        uint64_t getTotalMemoryUse() const noexcept override {
-            return store_.getTotalMemoryUse();
-        }
-
-        /*!
-         * \brief Computes and returns the memory usage by this checkpointer at
-         * this moment purely for the checkpoint state being held
-         */
-        uint64_t getContentMemoryUse() const noexcept override {
-            return store_.getContentMemoryUse();
-        }
 
         /*!
          * \brief Deletes a checkpoint by ID.
@@ -257,30 +228,6 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief Gets all checkpoints taken at tick t on any timeline.
-         * \param t Tick number at which checkpoints should found.
-         * \return vector of valid checkpoint IDs (never
-         * checkpoint_type::UNIDENTIFIED_CHECKPOINT)
-         * \note Makes a new vector of results. This should not be called in the
-         * critical path.
-         */
-        std::vector<chkpt_id_t> getCheckpointsAt(tick_t t) const override {
-            return store_.getCheckpointsAt(t);
-        }
-
-        /*!
-         * \brief Gets all checkpoint IDs available on any timeline sorted by
-         * tick (or equivalently checkpoint ID).
-         * \return vector of valid checkpoint IDs (never
-         * checkpoint_type::UNIDENTIFIED_CHECKPOINT)
-         * \note Makes a new vector of results. This should not be called in the
-         * critical path.
-         */
-        std::vector<chkpt_id_t> getCheckpoints() const override {
-            return store_.getCheckpoints();
-        }
-
-        /*!
          * \brief Gets the current number of checkpoints having valid IDs
          */
         uint32_t getNumCheckpoints() const noexcept override {
@@ -376,34 +323,6 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief Dumps this checkpointer's flat list of checkpoints to an
-         * ostream with a newline following each checkpoint
-         * \param o ostream to dump to
-         */
-        void dumpList(std::ostream& o) const override {
-            store_.dumpList(o);
-        }
-
-        /*!
-         * \brief Dumps this checkpointer's data to an ostream with a newline
-         * following each checkpoint
-         * \param o ostream to dump to
-         */
-        void dumpData(std::ostream& o) const override {
-            store_.dumpData(o);
-        }
-
-        /*!
-         * \brief Dumps this checkpointer's data to an
-         * ostream with annotations between each ArchData and a newline
-         * following each checkpoint description and each checkpoint data dump
-         * \param o ostream to dump to
-         */
-        void dumpAnnotatedData(std::ostream& o) const override {
-            store_.dumpAnnotatedData(o);
-        }
-
-        /*!
          * \brief Forwards debug/trace info onto checkpoint by ID
          */
         void traceValue(std::ostream& o, chkpt_id_t id, const ArchData* container, uint32_t offset, uint32_t size) override {
@@ -493,7 +412,7 @@ namespace sparta::serialization::checkpoint
                     }
 
                     num_dead_checkpoints_--;
-                    store_.deleteCheckpoint(id);
+                    deleteCheckpoint_(id);
                 }
 
                 d = prev; // Continue until head is reached
@@ -548,16 +467,12 @@ namespace sparta::serialization::checkpoint
          * returns nullptr.
          * \todo Faster lookup?
          */
-        checkpoint_type* findCheckpoint_(chkpt_id_t id) noexcept {
-            return store_.findCheckpoint(id);
-        }
+        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) noexcept = 0;
 
         /*!
          * \brief const variant of findCheckpoint_
          */
-        const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept {
-            return store_.findCheckpoint(id);
-        }
+        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept = 0;
 
         /*!
          * \brief Implements Checkpointer::dumpCheckpointNode_
@@ -606,9 +521,9 @@ namespace sparta::serialization::checkpoint
                 throw exc;
             }
 
-            checkpoint_type* dcp = new checkpoint_type(getRoot(), getArchDatas(), next_chkpt_id_++, tick, nullptr, true, &store_);
+            checkpoint_type* dcp = new checkpoint_type(getRoot(), getArchDatas(), next_chkpt_id_++, tick, nullptr, true);
             std::unique_ptr<checkpoint_type> ucp(dcp);
-            store_.store(std::move(ucp));
+            store_(std::move(ucp));
             setHead_(dcp);
             num_alive_checkpoints_++;
             num_alive_snapshots_++;
@@ -667,11 +582,10 @@ namespace sparta::serialization::checkpoint
                                                        next_chkpt_id_++,
                                                        tick,
                                                        prev,
-                                                       force_snapshot || is_snapshot,
-                                                       &store_);
+                                                       force_snapshot || is_snapshot);
 
             std::unique_ptr<checkpoint_type> ucp(dcp);
-            store_.store(std::move(ucp));
+            store_(std::move(ucp));
             num_alive_checkpoints_++;
             num_alive_snapshots_ += (dcp->isSnapshot() == true);
             setCurrent_(dcp);
@@ -687,9 +601,14 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief Store of checkpoint_type checkpoints (in memory, on disk, ...)
+         * \brief Remove the checkpoint from the backing store
          */
-        Store store_;
+        virtual void deleteCheckpoint_(chkpt_id_t id) = 0;
+
+        /*!
+         * \brief Store a newly created checkpoint
+         */
+        virtual void store_(std::unique_ptr<checkpoint_type> chkpt) = 0;
 
         /*!
          * \brief Snapshot generation threshold. Every n checkpoints in a chain

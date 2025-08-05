@@ -12,7 +12,7 @@
 #include "sparta/functional/Register.hpp"
 #include "sparta/functional/RegisterSet.hpp"
 #include "sparta/memory/MemoryObject.hpp"
-#include "sparta/serialization/checkpoint/FastCheckpointer.hpp"
+#include "sparta/serialization/checkpoint/MemoryFastCheckpointer.hpp"
 
 #include "sparta/utils/SpartaTester.hpp"
 
@@ -37,7 +37,7 @@ using sparta::LE; // Little
 using sparta::BE; // Big
 
 using sparta::serialization::checkpoint::Checkpointer;
-using sparta::serialization::checkpoint::FastCheckpointer;
+using sparta::serialization::checkpoint::MemoryFastCheckpointer;
 using sparta::serialization::checkpoint::DeltaCheckpoint;
 using sparta::serialization::checkpoint::chkpt_id_t;
 
@@ -101,7 +101,7 @@ void generalTest()
 
     // Create a checkpointer
 
-    FastCheckpointer<> fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -478,7 +478,7 @@ void generalTest()
  *  This logic belongs in a Simulation class
  */
 void restoreCheckpoint(std::stack<chkpt_id_t>& ckpts,
-                       FastCheckpointer<>& fcp,
+                       MemoryFastCheckpointer& fcp,
                        sparta::Scheduler* sched,
                        chkpt_id_t to_restore) {
     assert(sched);
@@ -526,7 +526,7 @@ void stackTest()
 
     // Create checkpointer
 
-    FastCheckpointer<> fcp(root, sched);
+    MemoryFastCheckpointer fcp(root, sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -650,7 +650,7 @@ void deletionTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer<> fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -745,7 +745,7 @@ void deletionTest2()
 
     // Create a checkpointer
 
-    FastCheckpointer<> fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -844,7 +844,7 @@ void deletionTest3()
 
     // Create a checkpointer
 
-    FastCheckpointer<> fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -929,7 +929,7 @@ void speedTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer<> fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();

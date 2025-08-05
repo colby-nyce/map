@@ -25,18 +25,6 @@ namespace sparta::serialization::checkpoint
     //! \brief Forward declarations
     class Checkpoint;
 
-    //! \brief Base class for all checkpoint backing stores.
-    class CheckpointBackingStore
-    {
-    public:
-        virtual ~CheckpointBackingStore() = default;
-        virtual chkpt_id_t getPrev(chkpt_id_t id) const = 0;
-        virtual void setPrev(chkpt_id_t id, chkpt_id_t prev_id) = 0;
-        virtual void addNext(chkpt_id_t id, chkpt_id_t next_id) = 0;
-        virtual void removeNext(chkpt_id_t id, chkpt_id_t next_id) = 0;
-        virtual std::vector<chkpt_id_t> getNexts(chkpt_id_t id) const = 0;
-    };
-
     /*!
      * \brief Single checkpoint object interface with a tick number and an ID
      * unique to the owning Checkpointer instance
@@ -80,12 +68,10 @@ namespace sparta::serialization::checkpoint
          */
         Checkpoint(chkpt_id_t id,
                    tick_t tick,
-                   Checkpoint* prev,
-                   CheckpointBackingStore* store) :
+                   Checkpoint* prev) :
             tick_(tick),
             chkpt_id_(id),
-            prev_(prev),
-            store_(store)
+            prev_(prev)
         { }
 
     public:
@@ -275,8 +261,6 @@ namespace sparta::serialization::checkpoint
         std::vector<Checkpoint*> nexts_;
 
         Checkpoint* prev_; //!< Previous checkpoint (earlier) than this. *this contains changes following prev.
-
-        CheckpointBackingStore* store_;
     };
 
 } // namespace sparta::serialization::checkpoint
