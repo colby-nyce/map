@@ -508,16 +508,16 @@ namespace sparta::serialization::checkpoint
             static std::string SNAPSHOT_NOTICE = "(s)";
 
             // checkpoint_type is a known direct base class of Checkpoint
-            const checkpoint_type* dcp = static_cast<const checkpoint_type*>(chkpt);
+            const checkpoint_type* cp = static_cast<const checkpoint_type*>(chkpt);
 
             // Draw data for this checkpoint
-            if(dcp->isFlaggedDeleted()){
-                o << dcp->getDeletedRepr();
+            if(cp->isFlaggedDeleted()){
+                o << chkpt->getDeletedRepr();
             }else{
-                o << dcp->getID();
+                o << chkpt->getID();
             }
             // Show that this is a snapshot
-            if(dcp->isSnapshot()){
+            if(cp->isSnapshot()){
                 o << ' ' << SNAPSHOT_NOTICE;
             }
         }
