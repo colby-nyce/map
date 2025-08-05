@@ -66,6 +66,8 @@ namespace sparta::serialization::checkpoint
     {
     public:
         using checkpoint_type = DeltaCheckpoint<storage::VectorStorage>;
+        using Checkpointer::tick_t;
+        using Checkpointer::chkpt_id_t;
 
         //! \name Construction & Initialization
         //! @{
