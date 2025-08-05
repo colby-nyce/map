@@ -36,10 +36,8 @@ using sparta::memory::BlockingMemoryObjectIFNode;
 using sparta::LE; // Little
 using sparta::BE; // Big
 
-using sparta::serialization::checkpoint::Checkpointer;
 using sparta::serialization::checkpoint::MemoryFastCheckpointer;
 using sparta::serialization::checkpoint::DeltaCheckpoint;
-using chkpt_id_t = typename sparta::serialization::checkpoint::Checkpoint::chkpt_id_t;
 
 static const uint16_t HINT_NONE=0;
 
@@ -120,7 +118,7 @@ void generalTest()
     memset(buf, 0x12, sizeof(buf));
     mem_if.write(0x100, 32, buf);
 
-    chkpt_id_t head_id;
+    MemoryFastCheckpointer::chkpt_id_t head_id;
 
     EXPECT_NOTHROW(fcp.createHead());
     EXPECT_THROW(fcp.createHead()); // Already has a head
@@ -138,7 +136,7 @@ void generalTest()
     memset(buf, 0x34, sizeof(buf));
     mem_if.write(0x100, 32, buf);
     // NO CHANGE in r2 here // r2->write<uint32_t>(0x2);
-    chkpt_id_t first_id = 0;
+    MemoryFastCheckpointer::chkpt_id_t first_id = 0;
 
     EXPECT_NOTHROW(first_id = fcp.createCheckpoint());
 
@@ -163,7 +161,7 @@ void generalTest()
     r2->write<uint32_t>(0x3);
     memset(buf, 0x56, sizeof(buf));
     mem_if.write(0x100, 32, buf);
-    chkpt_id_t second_id;
+    MemoryFastCheckpointer::chkpt_id_t second_id;
 
     EXPECT_NOTHROW(second_id = fcp.createCheckpoint());
 
@@ -205,7 +203,7 @@ void generalTest()
 
     r1->write<uint32_t>(0x39);
     r2->write<uint32_t>(0x3a);
-    chkpt_id_t third_id = 0;
+    MemoryFastCheckpointer::chkpt_id_t third_id = 0;
 
     EXPECT_NOTHROW(third_id = fcp.createCheckpoint());
 
@@ -216,7 +214,7 @@ void generalTest()
 
     // Create some more checkpoints to test threshold
     const uint32_t NUM_CHECKS_IN_LOOP = 6;
-    chkpt_id_t chpts_b1[NUM_CHECKS_IN_LOOP];
+    MemoryFastCheckpointer::chkpt_id_t chpts_b1[NUM_CHECKS_IN_LOOP];
     for(uint32_t i = 0; i < NUM_CHECKS_IN_LOOP; ++i){
 
         chpts_b1[i] = fcp.createCheckpoint();
@@ -242,7 +240,7 @@ void generalTest()
     // CHECKPOINTS at time 5-11
 
     // Create some more checkpoints in a branch from here
-    //chkpt_id_t chpts_b2[NUM_CHECKS_IN_LOOP];
+    //MemoryFastCheckpointer::chkpt_id_t chpts_b2[NUM_CHECKS_IN_LOOP];
     r1->write<uint32_t>(0x511);
     r2->write<uint32_t>(0x512);
     for(uint32_t i = 0; i < NUM_CHECKS_IN_LOOP; ++i){
@@ -282,7 +280,7 @@ void generalTest()
     // CHECKPOINTS at time 1-7
 
     // Create some more checkpoints in a branch from here
-    //chkpt_id_t chpts_b3[NUM_CHECKS_IN_LOOP];
+    //MemoryFastCheckpointer::chkpt_id_t chpts_b3[NUM_CHECKS_IN_LOOP];
     r1->write<uint32_t>(0x17);
     r2->write<uint32_t>(0x18);
     for(uint32_t i = 0; i < NUM_CHECKS_IN_LOOP; ++i){
@@ -477,10 +475,10 @@ void generalTest()
  *
  *  This logic belongs in a Simulation class
  */
-void restoreCheckpoint(std::stack<chkpt_id_t>& ckpts,
+void restoreCheckpoint(std::stack<MemoryFastCheckpointer::chkpt_id_t>& ckpts,
                        MemoryFastCheckpointer& fcp,
                        sparta::Scheduler* sched,
-                       chkpt_id_t to_restore) {
+                       MemoryFastCheckpointer::chkpt_id_t to_restore) {
     assert(sched);
 
     while(1){
@@ -534,7 +532,7 @@ void stackTest()
 
     // Stack for checkpoints
 
-    std::stack<chkpt_id_t> ckpts;
+    std::stack<MemoryFastCheckpointer::chkpt_id_t> ckpts;
 
     // t=1
     EXPECT_EQUAL(sched->getCurrentTick(), 1); // Expected to start at t=1, or further comparisons will fail
@@ -665,7 +663,7 @@ void deletionTest1()
     memset(buf, 0x12, sizeof(buf));
     mem_if.write(0x100, 32, buf);
 
-    //chkpt_id_t head_id;
+    //MemoryFastCheckpointer::chkpt_id_t head_id;
 
     fcp.setSnapshotThreshold(5);
 
@@ -759,7 +757,7 @@ void deletionTest2()
     memset(buf, 0x12, sizeof(buf));
     mem_if.write(0x100, 32, buf);
 
-    //chkpt_id_t head_id;
+    //MemoryFastCheckpointer::chkpt_id_t head_id;
 
     fcp.setSnapshotThreshold(5);
 
@@ -858,7 +856,7 @@ void deletionTest3()
     memset(buf, 0x12, sizeof(buf));
     mem_if.write(0x100, 32, buf);
 
-    //chkpt_id_t head_id;
+    //MemoryFastCheckpointer::chkpt_id_t head_id;
 
     fcp.setSnapshotThreshold(5);
 
@@ -943,7 +941,7 @@ void speedTest1()
     memset(buf, 0x12, sizeof(buf));
     mem_if.write(0x100, 32, buf);
 
-    //chkpt_id_t head_id;
+    //MemoryFastCheckpointer::chkpt_id_t head_id;
 
     fcp.setSnapshotThreshold(20);
 

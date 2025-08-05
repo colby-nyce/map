@@ -94,25 +94,6 @@ namespace sparta::serialization::checkpoint
             num_dead_checkpoints_(0)
         { }
 
-        bool hasCheckpoint(chkpt_id_t id) const noexcept override {
-            return findCheckpoint_(id) != nullptr;
-        }
-
-        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept override {
-            return findCheckpoint_(id);
-        }
-
-        const checkpoint_type* findCheckpoint(chkpt_id_t id) const noexcept override {
-            return findCheckpoint_(id);
-        }
-
-        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) = 0;
-
-        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const = 0;
-
-        ////////////////////////////////////////////////////////////////////////
-        //! @}
-
         //! \name Attributes
         //! @{
         ////////////////////////////////////////////////////////////////////////
@@ -145,6 +126,34 @@ namespace sparta::serialization::checkpoint
         //! \name Checkpointing Actions & Queries
         //! @{
         ////////////////////////////////////////////////////////////////////////
+
+        /*!
+         * \brief Tests whether this checkpoint manager has a checkpoint with
+         * the given id.
+         * \return True if id refers to a checkpoint held by this checkpointer
+         * and false if not. If id == Checkpoint::UNIDENTIFIED_CHECKPOINT,
+         * always returns false
+         */
+        bool hasCheckpoint(chkpt_id_t id) const noexcept override {
+            return findCheckpoint_(id) != nullptr;
+        }
+
+        /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept override {
+            return findCheckpoint_(id);
+        }
+
+        /*!
+         * \brief Finds a checkpoint by its ID (const version)
+         */
+        const checkpoint_type* findCheckpoint(chkpt_id_t id) const noexcept override {
+            return findCheckpoint_(id);
+        }
 
         /*!
          * \brief Deletes a checkpoint by ID.
@@ -499,16 +508,16 @@ namespace sparta::serialization::checkpoint
             static std::string SNAPSHOT_NOTICE = "(s)";
 
             // checkpoint_type is a known direct base class of Checkpoint
-            const checkpoint_type* cp = static_cast<const checkpoint_type*>(chkpt);
+            const checkpoint_type* dcp = static_cast<const checkpoint_type*>(chkpt);
 
             // Draw data for this checkpoint
-            if(cp->isFlaggedDeleted()){
-                o << cp->getDeletedRepr();
+            if(dcp->isFlaggedDeleted()){
+                o << dcp->getDeletedRepr();
             }else{
-                o << cp->getID();
+                o << dcp->getID();
             }
             // Show that this is a snapshot
-            if(cp->isSnapshot()){
+            if(dcp->isSnapshot()){
                 o << ' ' << SNAPSHOT_NOTICE;
             }
         }
@@ -540,8 +549,8 @@ namespace sparta::serialization::checkpoint
             }
 
             checkpoint_type* dcp = new checkpoint_type(getRoot(), getArchDatas(), next_chkpt_id_++, tick, nullptr, true);
-            std::unique_ptr<checkpoint_type> ucp(dcp);
-            store_(std::move(ucp));
+            std::unique_ptr<checkpoint_type> udcp(dcp);
+            store_(std::move(udcp));
             setHead_(dcp);
             num_alive_checkpoints_++;
             num_alive_snapshots_++;
@@ -602,8 +611,8 @@ namespace sparta::serialization::checkpoint
                                                        prev,
                                                        force_snapshot || is_snapshot);
 
-            std::unique_ptr<checkpoint_type> ucp(dcp);
-            store_(std::move(ucp));
+            std::unique_ptr<checkpoint_type> udcp(dcp);
+            store_(std::move(udcp));
             num_alive_checkpoints_++;
             num_alive_snapshots_ += (dcp->isSnapshot() == true);
             setCurrent_(dcp);
@@ -619,14 +628,27 @@ namespace sparta::serialization::checkpoint
         }
 
         /*!
-         * \brief Remove the checkpoint from the backing store
-         */
-        virtual void deleteCheckpoint_(chkpt_id_t id) = 0;
-
-        /*!
          * \brief Store a newly created checkpoint
          */
         virtual void store_(std::unique_ptr<checkpoint_type> chkpt) = 0;
+
+        /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) = 0;
+
+        /*!
+         * \brief Finds a checkpoint by its ID (const version)
+         */
+        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const = 0;
+
+        /*!
+         * \brief Remove the checkpoint from the backing store
+         */
+        virtual void deleteCheckpoint_(chkpt_id_t id) = 0;
 
         /*!
          * \brief Snapshot generation threshold. Every n checkpoints in a chain
