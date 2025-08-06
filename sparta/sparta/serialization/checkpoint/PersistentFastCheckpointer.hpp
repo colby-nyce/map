@@ -12,7 +12,7 @@
 #include "sparta/functional/ArchData.hpp"
 #include "sparta/utils/SpartaException.hpp"
 #include "sparta/utils/SpartaAssert.hpp"
-#include "sparta/serialization/checkpoint/FastCheckpointer.hpp"
+#include "sparta/serialization/checkpoint/MemoryFastCheckpointer.hpp"
 
 namespace sparta::serialization::checkpoint
 {
@@ -24,7 +24,7 @@ namespace sparta::serialization::checkpoint
      * checkpoints to memory), this class enables user the save the
      * checkpoints to disk for loading later.
      */
-    class PersistentFastCheckpointer : public FastCheckpointer
+    class PersistentFastCheckpointer : public MemoryFastCheckpointer
     {
     public:
 
@@ -148,7 +148,7 @@ namespace sparta::serialization::checkpoint
          */
         PersistentFastCheckpointer(TreeNode& root,
                                    sparta::Scheduler* sched=nullptr) :
-            FastCheckpointer(root, sched),
+            MemoryFastCheckpointer(root, sched),
             prefix_("chkpt"),
             suffix_("data")
         { }

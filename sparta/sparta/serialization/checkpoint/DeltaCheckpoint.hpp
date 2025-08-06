@@ -32,6 +32,40 @@ namespace sparta::serialization::checkpoint
             public:
 
                 /*!
+                 * \brief This helper class is used for serialization purposes.
+                 */
+                class DetachedClone
+                {
+                public:
+                    DetachedClone(ArchData::line_idx_type idx, std::vector<char>&& segment_data)
+                        : idx_(idx)
+                        , segment_data_(std::move(segment_data))
+                    {}
+
+                    ArchData::line_idx_type getLineIdx() const {
+                        return idx_;
+                    }
+
+                    const std::vector<char>& getSegmentData() const {
+                        return segment_data_;
+                    }
+
+                private:
+                    ArchData::line_idx_type idx_;
+                    std::vector<char> segment_data_;
+                };
+
+                /*!
+                 * \brief Copy this segment for serialization purposes
+                 */
+                DetachedClone* clone() const {
+                    std::vector<char> data_clone;
+                    data_clone.resize(bytes_);
+                    copyTo(data_clone.data(), data_clone.size());
+                    return new DetachedClone(idx_, std::move(data_clone));
+                }
+
+                /*!
                  * \brief Copying disabled (avoid memcpy)
                  */
                 Segment(const Segment&) = delete;
@@ -223,125 +257,33 @@ namespace sparta::serialization::checkpoint
             }
 
             /*!
-             * \brief Steal line buffer. Useful if the checkpoint is being reloaded
-             * AND simultaneouslty destroyed
-             * \todo implement this
+             * \brief Helper class used for serialization purposes.
              */
-            //void stealLineBytes(char*& buf_ptr, uint32_t size) {
-            //    cur_restore_itr_->stealBuffer(buf_ptr, size);
-            //}
-        };
+            class DetachedClone
+            {
+            public:
+                DetachedClone(std::vector<std::unique_ptr<Segment::DetachedClone>>&& segment_clones)
+                    : segment_clones_(std::move(segment_clones))
+                {}
 
-        /*!
-         * \brief Stringstream storage implementation
-         * \warning This is deprecated in favor of VectorStorage for in-memory uses.
-         * However, this is a starting point for disk-based storage schemes
-         */
-        class StringStreamStorage
-        {
-            std::stringstream ss_;
-
-        public:
-            StringStreamStorage() {
-                ss_.exceptions(std::ostream::eofbit | std::ostream::badbit |
-                               std::ostream::failbit | std::ostream::goodbit);
-            }
-
-            void dump(std::ostream& o) const {
-                auto s = ss_.str();
-                auto itr = s.begin();
-                for(; itr != s.end(); itr++){
-                    char chr = *itr;
-                    if(chr == 'L'){
-                        uint32_t off = 0;
-                        ArchData::line_idx_type ln_idx;
-                        strncpy((char*)&ln_idx, s.substr(itr-s.begin(), sizeof(ln_idx)).c_str(), sizeof(ln_idx));
-                        std::cout << "\nLine: " << ln_idx << std::endl;
-                        itr += sizeof(ArchData::line_idx_type);
-
-                        for(uint16_t i=0; i<64; ++i){
-                            chr = *itr;
-                            if(off % 32 == 0){
-                                o << std::setw(7) << std::hex << off;
-                            }
-                            if(chr == 0){
-                                o << ' ' << "..";
-                            }else{
-                                o << ' ' << std::setfill('0') << std::setw(2) << std::hex << (0xff & (uint16_t)chr);
-                            }
-                            off++;
-                            if(off % 32 == 0){
-                                o << std::endl;
-                            }
-                            ++itr;
-                        }
-                    }
+                const std::vector<std::unique_ptr<Segment::DetachedClone>>& getSegmentClones() const {
+                    return segment_clones_;
                 }
-            }
 
-            uint32_t getSize() const {
-                return ss_.str().size() + sizeof(decltype(*this));
-            }
-
-            void prepareForLoad() {
-                ss_.seekg(0); // Seek to start with get pointer before consuming
-            }
-
-            void beginLine(ArchData::line_idx_type idx) {
-                ss_ << 'L'; // Line start char
-
-                ArchData::line_idx_type idx_repr = reorder<ArchData::line_idx_type, LE>(idx);
-                ss_.write((char*)&idx_repr, sizeof(ArchData::line_idx_type));
-            }
-
-            void writeLineBytes(const char* data, size_t size) {
-                ss_.write(data, size);
-            }
-
-            /*!
-             * \brief Signals end of this checkpoint's data
-             */
-            void endArchData() {
-                ss_ << "E"; // Indicates end of this checkpoint data
-
-                sparta_assert(ss_.good(),
-                              "Ostream error while writing checkpoint data");
-            }
-
-            /*!
-             * \brief Is the reading state of this storage good? (i.e. haven't tried
-             * to read past the end of the data)
-             */
-            bool good() const {
-                return ss_.good();
-            }
-
-            /*!
-             * \brief Restore next line. Return ArchData::INVALID_LINE_IDX on
-             * end of data.
-             */
-            ArchData::line_idx_type getNextRestoreLine() {
-                char ctrl;
-                ss_ >> ctrl;
-                sparta_assert(ss_.good(),
-                              "Encountered checkpoint data stream error or eof");
-                if(ctrl == 'L'){
-                    ArchData::line_idx_type ln_idx = 0;
-                    ss_.read((char*)&ln_idx, sizeof(ln_idx)); // Presumed LE encoding
-                    return ln_idx;
-                }else if(ctrl == 'E'){
-                    return ArchData::INVALID_LINE_IDX; // Done with restore
-                }else{
-                    throw SpartaException("Failed to restore a checkpoint because a '")
-                        << ctrl << "' control character was found where an 'L' or 'E' was found";
-                }
+            private:
+                std::vector<std::unique_ptr<Segment::DetachedClone>> segment_clones_;
             };
 
             /*!
-             * \brief Read bytes for the current line
+             * \brief Clone this vector storage for serialization purposes.
              */
-            void copyLineBytes(char* buf, uint32_t size) {
-                ss_.read(buf, size);
+            DetachedClone* clone() const {
+                std::vector<std::unique_ptr<Segment::DetachedClone>> cloned_segments;
+                cloned_segments.reserve(data_.size());
+                for (auto& seg : data_) {
+                    cloned_segments.emplace_back(seg.clone());
+                }
+                return new DetachedClone(std::move(cloned_segments));
             }
         };
 
@@ -367,7 +309,7 @@ namespace sparta::serialization::checkpoint
      * \todo Store reverse deltas additional (or maybe instead) so that rewind
      * is quicker
      */
-    template<typename StorageT=storage::StringStreamStorage>
+    template<typename StorageT=storage::VectorStorage>
     class DeltaCheckpoint : public Checkpoint
     {
     public:
@@ -384,6 +326,59 @@ namespace sparta::serialization::checkpoint
 
         //! \brief Non-assignable
         const DeltaCheckpoint& operator=(const DeltaCheckpoint&) = delete;
+
+        //! \brief This helper class is used for serialization purposes,
+        //! notably removing the checkpoint prev/next pointers in favor
+        //! of their checkpoint IDs.
+        class DetachedClone : public Checkpoint::DetachedClone
+        {
+        public:
+            using StorageClone = typename StorageT::DetachedClone;
+
+            DetachedClone(chkpt_id_t id,
+                          chkpt_id_t prev_id,
+                          const std::vector<chkpt_id_t>& next_ids,
+                          tick_t tick,
+                          chkpt_id_t deleted_id,
+                          bool is_snapshot,
+                          StorageClone* storage_clone)
+                : Checkpoint::DetachedClone(id, prev_id, next_ids, tick)
+                , deleted_id_(deleted_id)
+                , is_snapshot_(is_snapshot)
+                , storage_clone_(storage_clone)
+            {}
+
+            chkpt_id_t getDeletedID() const {
+                return deleted_id_;
+            }
+
+            bool isSnapshot() const {
+                return is_snapshot_;
+            }
+
+            const StorageClone& getStorage() const {
+                return *storage_clone_;
+            }
+
+        private:
+            chkpt_id_t deleted_id_;
+            bool is_snapshot_;
+            std::unique_ptr<StorageClone> storage_clone_;
+        };
+
+        //! \brief Clonable
+        DetachedClone* clone() const override {
+            auto tick = getTick();
+            auto id = getID();
+            auto prev_id = getPrev() ? getPrev()->getID() : Checkpoint::UNIDENTIFIED_CHECKPOINT;
+
+            std::vector<chkpt_id_t> next_ids;
+            for (auto c : getNexts()) {
+                next_ids.push_back(c->getID());
+            }
+
+            return new DetachedClone(id, prev_id, next_ids, tick, deleted_id_, is_snapshot_, data_.clone());
+        }
 
     private:
 

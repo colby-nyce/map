@@ -40,6 +40,7 @@ list (APPEND SourceCppFiles
             src/CounterBase.cpp
             src/CsvFormatter.cpp
             src/DAG.cpp
+            src/DatabaseFastCheckpointer.cpp
             src/Destination.cpp
             src/EdgeFactory.cpp
             src/EventNode.cpp
