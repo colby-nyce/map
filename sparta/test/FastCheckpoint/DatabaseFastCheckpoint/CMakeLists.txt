@@ -1,0 +1,5 @@
+project(DatabaseFastCheckpoint_test)
+
+sparta_add_test_executable(DatabaseFastCheckpoint_test DatabaseFastCheckpoint_test.cpp)
+
+sparta_test(DatabaseFastCheckpoint_test DatabaseFastCheckpoint_test_RUN)

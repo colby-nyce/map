@@ -15,7 +15,6 @@
 
 namespace sparta::serialization::checkpoint
 {
-    class FastCheckpointer;
 
     /*!
      * \brief Single checkpoint object interface with a tick number and an ID
@@ -67,6 +66,50 @@ namespace sparta::serialization::checkpoint
         //! \brief Non-assignable
         const Checkpoint& operator=(const Checkpoint&) = delete;
 
+        //! \brief This helper class is used for serialization purposes,
+        //! notably removing the checkpoint prev/next pointers in favor
+        //! of their checkpoint IDs.
+        class DetachedClone
+        {
+        public:
+            virtual ~DetachedClone() = default;
+
+            DetachedClone(chkpt_id_t id,
+                          chkpt_id_t prev_id,
+                          const std::vector<chkpt_id_t>& next_ids,
+                          tick_t tick)
+                : id_(id)
+                , prev_id_(prev_id)
+                , next_ids_(next_ids)
+                , tick_(tick)
+            {}
+
+            chkpt_id_t getID() const {
+                return id_;
+            }
+
+            chkpt_id_t getPrevID() const {
+                return prev_id_;
+            }
+
+            const std::vector<chkpt_id_t>& getNextIDs() const {
+                return next_ids_;
+            }
+
+            tick_t getTick() const {
+                return tick_;
+            }
+
+        private:
+            chkpt_id_t id_;
+            chkpt_id_t prev_id_;
+            std::vector<chkpt_id_t> next_ids_;
+            tick_t tick_;
+        };
+
+        //! \brief Clonable
+        virtual DetachedClone* clone() const = 0;
+
     protected:
 
         /*!
@@ -81,7 +124,6 @@ namespace sparta::serialization::checkpoint
         { }
 
     public:
-
 
         /*!
          * \brief Destructor
@@ -101,7 +143,6 @@ namespace sparta::serialization::checkpoint
                     getPrev()->addNext(d);
                 }
             }
-
         }
 
         ////////////////////////////////////////////////////////////////////////

@@ -12,7 +12,7 @@
 #include "sparta/functional/Register.hpp"
 #include "sparta/functional/RegisterSet.hpp"
 #include "sparta/memory/MemoryObject.hpp"
-#include "sparta/serialization/checkpoint/FastCheckpointer.hpp"
+#include "sparta/serialization/checkpoint/MemoryFastCheckpointer.hpp"
 
 #include "sparta/utils/SpartaTester.hpp"
 
@@ -37,6 +37,7 @@ using sparta::LE; // Little
 using sparta::BE; // Big
 
 using sparta::serialization::checkpoint::FastCheckpointer;
+using sparta::serialization::checkpoint::MemoryFastCheckpointer;
 using sparta::serialization::checkpoint::DeltaCheckpoint;
 
 static const uint16_t HINT_NONE=0;
@@ -99,7 +100,7 @@ void generalTest()
 
     // Create a checkpointer
 
-    FastCheckpointer fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -309,7 +310,6 @@ void generalTest()
     EXPECT_EQUAL(fcp.getCheckpointChain(12)[4], 5);
     EXPECT_EQUAL((fcp.findLatestCheckpointAtOrBefore(19, second_id)), fcp.findCheckpoint(second_id));
 
-
     // Delete some checkpoints
 
     EXPECT_EQUAL(fcp.getNumDeadCheckpoints(), 0);
@@ -364,7 +364,7 @@ void generalTest()
 
     // Look at a restore chain
 
-    auto* cp20 = (fcp.findInternalCheckpoint(20));
+    auto* cp20 = (fcp.findCheckpoint(20));
     auto rc20 = cp20->getRestoreChain();
     EXPECT_EQUAL(rc20.size(), 6); // 0 -> 16 -> 17 -> * -> 19 -> 20
     std::cout << "\nRestore chain for cp 20:" << std::endl;
@@ -394,7 +394,7 @@ void generalTest()
     auto cpA = fcp.createCheckpoint();
     ////r1->write<uint32_t>(0xbbbb);
     std::cout << "Dumping restore chain for cpA (" << cpA << ")" << std::endl;
-    fcp.findInternalCheckpoint(cpA)->dumpRestoreChain(std::cout);
+    fcp.findCheckpoint(cpA)->dumpRestoreChain(std::cout);
     std::cout << std::endl;
     continues.clear();
     fcp.dumpBranch(std::cout,
@@ -407,7 +407,7 @@ void generalTest()
     auto cpC = fcp.createCheckpoint();
     //////fcp.deleteCheckpoint(cpA);
     std::cout << "Dumping restore chain for cpC (" << cpC << ")" << std::endl;
-    fcp.findInternalCheckpoint(cpC)->dumpRestoreChain(std::cout);
+    fcp.findCheckpoint(cpC)->dumpRestoreChain(std::cout);
     std::cout << std::endl;
     continues.clear();
     fcp.dumpBranch(std::cout,
@@ -438,7 +438,7 @@ void generalTest()
     auto cpB = fcp.createCheckpoint();
     fcp.loadCheckpoint(cpB);
     std::cout << "Dumping restore chain for cpB (" << cpB << ")" << std::endl;
-    fcp.findInternalCheckpoint(cpB)->dumpRestoreChain(std::cout);
+    fcp.findCheckpoint(cpB)->dumpRestoreChain(std::cout);
     std::cout << std::endl;
     continues.clear();
     fcp.dumpBranch(std::cout,
@@ -480,7 +480,7 @@ void generalTest()
  *  This logic belongs in a Simulation class
  */
 void restoreCheckpoint(std::stack<FastCheckpointer::chkpt_id_t>& ckpts,
-                       FastCheckpointer& fcp,
+                       MemoryFastCheckpointer& fcp,
                        sparta::Scheduler* sched,
                        FastCheckpointer::chkpt_id_t to_restore) {
     assert(sched);
@@ -528,7 +528,7 @@ void stackTest()
 
     // Create checkpointer
 
-    FastCheckpointer fcp(root, sched);
+    MemoryFastCheckpointer fcp(root, sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -652,7 +652,7 @@ void deletionTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -747,7 +747,7 @@ void deletionTest2()
 
     // Create a checkpointer
 
-    FastCheckpointer fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -846,7 +846,7 @@ void deletionTest3()
 
     // Create a checkpointer
 
-    FastCheckpointer fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();
@@ -931,7 +931,7 @@ void speedTest1()
 
     // Create a checkpointer
 
-    FastCheckpointer fcp(root, &sched);
+    MemoryFastCheckpointer fcp(root, &sched);
     fcp.setSnapshotThreshold(5);
 
     root.enterConfiguring();

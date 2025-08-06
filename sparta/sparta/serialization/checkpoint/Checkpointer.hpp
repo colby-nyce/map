@@ -127,25 +127,13 @@ namespace sparta::serialization::checkpoint
          * \note This is an approxiation and does not include some of
          * minimal dynamic overhead from stl containers.
          */
-        uint64_t getTotalMemoryUse() const noexcept {
-            uint64_t mem = 0;
-            for(auto& cp : chkpts_){
-                mem += cp.second->getTotalMemoryUse();
-            }
-            return mem;
-        }
+        virtual uint64_t getTotalMemoryUse() const noexcept = 0;
 
         /*!
          * \brief Computes and returns the memory usage by this checkpointer at
          * this moment purely for the checkpoint state being held
          */
-        uint64_t getContentMemoryUse() const noexcept {
-            uint64_t mem = 0;
-            for(auto& cp : chkpts_){
-                mem += cp.second->getContentMemoryUse();
-            }
-            return mem;
-        }
+        virtual uint64_t getContentMemoryUse() const noexcept = 0;
 
         /*!
          * \brief Returns the total number of checkpoints which have been
@@ -309,7 +297,7 @@ namespace sparta::serialization::checkpoint
          * tick number >= this scheduler's head checkpoint tick.
          * \note has no effect if the head has no been created.
          */
-        void forgetCurrent() {
+        virtual void forgetCurrent() {
             if(head_){
                 current_ = head_;
             }
@@ -387,9 +375,15 @@ namespace sparta::serialization::checkpoint
          * deleted
          * \return Checkpoint with ID of \a id if found or nullptr if not found
          */
-        Checkpoint* findCheckpoint(chkpt_id_t id) noexcept {
-            return findCheckpoint_(id);
-        }
+        virtual Checkpoint* findCheckpoint(chkpt_id_t id) noexcept = 0;
+
+        /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        virtual const Checkpoint* findCheckpoint(chkpt_id_t id) const noexcept = 0;
 
         /*!
          * \brief Tests whether this checkpoint manager has a checkpoint with
@@ -398,9 +392,7 @@ namespace sparta::serialization::checkpoint
          * and false if not. If id == Checkpoint::UNIDENTIFIED_CHECKPOINT,
          * always returns false
          */
-        virtual bool hasCheckpoint(chkpt_id_t id) const noexcept {
-            return findCheckpoint_(id) != nullptr;
-        }
+        virtual bool hasCheckpoint(chkpt_id_t id) const noexcept = 0;
 
         /*!
          * \brief Returns the head checkpoint which is equivalent to the
@@ -505,23 +497,14 @@ namespace sparta::serialization::checkpoint
          * ostream with a newline following each checkpoint
          * \param o ostream to dump to
          */
-        void dumpList(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                o << cp.second->stringize() << std::endl;
-            }
-        }
+        virtual void dumpList(std::ostream& o) const = 0;
 
         /*!
          * \brief Dumps this checkpointer's data to an ostream with a newline
          * following each checkpoint
          * \param o ostream to dump to
          */
-        void dumpData(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                cp.second->dumpData(o);
-                o << std::endl;
-            }
-        }
+        virtual void dumpData(std::ostream& o) const = 0;
 
         /*!
          * \brief Dumps this checkpointer's data to an
@@ -529,13 +512,7 @@ namespace sparta::serialization::checkpoint
          * following each checkpoint description and each checkpoint data dump
          * \param o ostream to dump to
          */
-        void dumpAnnotatedData(std::ostream& o) const {
-            for(auto& cp : chkpts_){
-                o << cp.second->stringize() << std::endl;
-                cp.second->dumpData(o);
-                o << std::endl;
-            }
-        }
+        virtual void dumpAnnotatedData(std::ostream& o) const = 0;
 
         /*!
          * \brief Debugging utility which dumps values in some bytes across a
@@ -654,20 +631,6 @@ namespace sparta::serialization::checkpoint
     protected:
 
         /*!
-         * \brief Attempts to find a checkpoint within this checkpointer by ID.
-         * \param id Checkpoint ID to search for
-         * \return Pointer to found checkpoint with matchind ID. If not found,
-         * returns nullptr.
-         * \todo Faster lookup?
-         */
-        virtual Checkpoint* findCheckpoint_(chkpt_id_t id) noexcept = 0;
-
-        /*!
-         * \brief const variant of findCheckpoint_
-         */
-        virtual const Checkpoint* findCheckpoint_(chkpt_id_t id) const noexcept = 0;
-
-        /*!
          * \brief Create a head node.
          * \pre ArchDatas for tree root are already enumerated
          * \pre Tree of getRoot() is already finalized
@@ -747,16 +710,6 @@ namespace sparta::serialization::checkpoint
                         "Can never setCurrent_ to nullptr except. A null current is a valid state at initialization only")
             current_ = current;
         }
-
-        /*!
-         * \brief All checkpoints sorted by ascending tick number (or
-         * equivalently ascending checkpoint ID since both are monotonically
-         * increasing)
-         *
-         * This map must still be explicitly torn down in reverse order by a
-         * subclass of Checkpointer
-         */
-        std::map<chkpt_id_t, std::unique_ptr<Checkpoint>> chkpts_;
 
         /*!
          * \brief Scheduler whose tick count will be set and read. Cannnot be

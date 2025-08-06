@@ -65,9 +65,9 @@ namespace sparta::serialization::checkpoint
     class FastCheckpointer : public Checkpointer
     {
     public:
-
-        typedef DeltaCheckpoint<storage::VectorStorage> checkpoint_type;
-        //typedef DeltaCheckpoint<storage::StringStreamStorage> checkpoint_type;
+        using checkpoint_type = DeltaCheckpoint<storage::VectorStorage>;
+        using Checkpointer::tick_t;
+        using Checkpointer::chkpt_id_t;
 
         //! \name Construction & Initialization
         //! @{
@@ -95,24 +95,6 @@ namespace sparta::serialization::checkpoint
             num_alive_snapshots_(0),
             num_dead_checkpoints_(0)
         { }
-
-        /*!
-         * \brief Destructor
-         *
-         * Frees all checkpoint data
-         */
-        ~FastCheckpointer() {
-            // Reverse iterate and flag all as free
-            for(auto itr = chkpts_.rbegin(); itr != chkpts_.rend(); ++itr){
-                checkpoint_type* d = static_cast<checkpoint_type*>(itr->second.get());
-                if(!d->isFlaggedDeleted()){
-                    d->flagDeleted();
-                }
-            }
-        }
-
-        ////////////////////////////////////////////////////////////////////////
-        //! @}
 
         //! \name Attributes
         //! @{
@@ -148,6 +130,23 @@ namespace sparta::serialization::checkpoint
         ////////////////////////////////////////////////////////////////////////
 
         /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        checkpoint_type* findCheckpoint(chkpt_id_t id) noexcept override {
+            return findCheckpoint_(id);
+        }
+
+        /*!
+         * \brief Finds a checkpoint by its ID (const version)
+         */
+        const checkpoint_type* findCheckpoint(chkpt_id_t id) const noexcept override {
+            return findCheckpoint_(id);
+        }
+
+        /*!
          * \brief Deletes a checkpoint by ID.
          * \param id ID of checkpoint to delete. Must not be
          * checkpoint_type::UNIDENTIFIED_CHECKPOINT and must not be equal to the
@@ -169,7 +168,7 @@ namespace sparta::serialization::checkpoint
         void deleteCheckpoint(chkpt_id_t id) override {
 
             // Flag checkpoint as deleted
-            checkpoint_type* d = findCheckpoint_(id);
+            checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("Could not delete checkpoint ID=")
                     << id << " because no checkpoint by this ID was found";
@@ -206,7 +205,7 @@ namespace sparta::serialization::checkpoint
          * tick using Scheduler::restartAt
          */
         void loadCheckpoint(chkpt_id_t id) override {
-            checkpoint_type* d = findCheckpoint_(id);
+            checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("Could not load checkpoint ID=")
                     << id << " because no checkpoint by this ID was found";
@@ -230,58 +229,6 @@ namespace sparta::serialization::checkpoint
             // the chain. No important checkpoints will be removed. The
             // important thing is never to remove current_.
             cleanupChain_(rmv);
-        }
-
-        /*!
-         * \brief Queries a specific checkpoint by ID
-         */
-        bool checkpointExists(chkpt_id_t id) {
-            bool exists = false;
-            checkpoint_type* d = findCheckpoint_(id);
-            if(d){
-                exists = true;
-            }
-            return exists;
-        }
-
-        /*!
-         * \brief Gets all checkpoints taken at tick t on any timeline.
-         * \param t Tick number at which checkpoints should found.
-         * \return vector of valid checkpoint IDs (never
-         * checkpoint_type::UNIDENTIFIED_CHECKPOINT)
-         * \note Makes a new vector of results. This should not be called in the
-         * critical path.
-         */
-        std::vector<chkpt_id_t> getCheckpointsAt(tick_t t) const override {
-            std::vector<chkpt_id_t> results;
-            for(auto& p : chkpts_){
-                const Checkpoint* cp = p.second.get();
-                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp);
-                if(cp->getTick() == t && !dcp->isFlaggedDeleted()){
-                    results.push_back(cp->getID());
-                }
-            }
-            return results;
-        }
-
-        /*!
-         * \brief Gets all checkpoint IDs available on any timeline sorted by
-         * tick (or equivalently checkpoint ID).
-         * \return vector of valid checkpoint IDs (never
-         * checkpoint_type::UNIDENTIFIED_CHECKPOINT)
-         * \note Makes a new vector of results. This should not be called in the
-         * critical path.
-         */
-        std::vector<chkpt_id_t> getCheckpoints() const override {
-            std::vector<chkpt_id_t> results;
-            for(auto& p : chkpts_){
-                const Checkpoint* cp = p.second.get();
-                const checkpoint_type* dcp = static_cast<const checkpoint_type*>(cp);
-                if(!dcp->isFlaggedDeleted()){
-                    results.push_back(cp->getID());
-                }
-            }
-            return results;
         }
 
         /*!
@@ -333,7 +280,7 @@ namespace sparta::serialization::checkpoint
             if(!getHead()){
                 return results;
             }
-            const checkpoint_type* d = findCheckpoint_(id);
+            const checkpoint_type* d = findCheckpoint(id);
             if(!d){
                 throw CheckpointError("There is no checkpoint with ID ") << id;
             }
@@ -363,7 +310,7 @@ namespace sparta::serialization::checkpoint
          */
         checkpoint_type* findLatestCheckpointAtOrBefore(tick_t tick,
                                                         chkpt_id_t from) override {
-            checkpoint_type* d = findCheckpoint_(from);
+            checkpoint_type* d = findCheckpoint(from);
             if(!d){
                 throw CheckpointError("There is no checkpoint with ID ") << from;
             }
@@ -377,15 +324,6 @@ namespace sparta::serialization::checkpoint
             }while(d);
 
             return d;
-        }
-
-
-        /*!
-         * \brief Gets a checkpoint through findCheckpoint interface casted to
-         * the type of Checkpoint subclass used by this class.
-         */
-        checkpoint_type* findInternalCheckpoint(chkpt_id_t id) {
-            return static_cast<checkpoint_type*>(findCheckpoint_(id));
         }
 
         ////////////////////////////////////////////////////////////////////////
@@ -408,7 +346,7 @@ namespace sparta::serialization::checkpoint
          * \brief Forwards debug/trace info onto checkpoint by ID
          */
         void traceValue(std::ostream& o, chkpt_id_t id, const ArchData* container, uint32_t offset, uint32_t size) override {
-            checkpoint_type* dcp = findCheckpoint_(id);
+            checkpoint_type* dcp = findCheckpoint(id);
             o << "trace: Searching for 0x" << std::hex << offset << " (" << std::dec << size
               << " bytes) in ArchData " << (const void*)container << " when loading checkpoint "
               << std::dec << id << std::endl;
@@ -494,11 +432,7 @@ namespace sparta::serialization::checkpoint
                     }
 
                     num_dead_checkpoints_--;
-
-                    // Erase element in the map
-                    auto itr = chkpts_.find(id);
-                    sparta_assert(itr != chkpts_.end());
-                    chkpts_.erase(itr);
+                    deleteCheckpoint_(id);
                 }
 
                 d = prev; // Continue until head is reached
@@ -544,32 +478,6 @@ namespace sparta::serialization::checkpoint
 
             // Found nothing alive.
             return false;
-        }
-
-        /*!
-         * \brief Attempts to find a checkpoint within this checkpointer by ID.
-         * \param id Checkpoint ID to search for
-         * \return Pointer to found checkpoint with matchind ID. If not found,
-         * returns nullptr.
-         * \todo Faster lookup?
-         */
-        checkpoint_type* findCheckpoint_(chkpt_id_t id) noexcept override {
-            auto itr = chkpts_.find(id);
-            if (itr != chkpts_.end()) {
-                return static_cast<checkpoint_type*>(itr->second.get());
-            }
-            return nullptr;
-        }
-
-        /*!
-         * \brief const variant of findCheckpoint_
-         */
-        const checkpoint_type* findCheckpoint_(chkpt_id_t id) const noexcept override {
-            auto itr = chkpts_.find(id);
-            if (itr != chkpts_.end()) {
-                return static_cast<checkpoint_type*>(itr->second.get());
-            }
-            return nullptr;
         }
 
         /*!
@@ -620,7 +528,8 @@ namespace sparta::serialization::checkpoint
             }
 
             checkpoint_type* dcp = new checkpoint_type(getRoot(), getArchDatas(), next_chkpt_id_++, tick, nullptr, true);
-            chkpts_[dcp->getID()].reset(dcp);
+            std::unique_ptr<checkpoint_type> udcp(dcp);
+            store_(std::move(udcp));
             setHead_(dcp);
             num_alive_checkpoints_++;
             num_alive_snapshots_++;
@@ -680,7 +589,9 @@ namespace sparta::serialization::checkpoint
                                                        tick,
                                                        prev,
                                                        force_snapshot || is_snapshot);
-            chkpts_[dcp->getID()].reset(dcp);
+
+            std::unique_ptr<checkpoint_type> udcp(dcp);
+            store_(std::move(udcp));
             num_alive_checkpoints_++;
             num_alive_snapshots_ += (dcp->isSnapshot() == true);
             setCurrent_(dcp);
@@ -695,6 +606,28 @@ namespace sparta::serialization::checkpoint
             return dcp->getID();
         }
 
+        /*!
+         * \brief Store a newly created checkpoint
+         */
+        virtual void store_(std::unique_ptr<checkpoint_type> chkpt) = 0;
+
+        /*!
+         * \brief Finds a checkpoint by its ID
+         * \param id ID of checkpoint to find. Guaranteed not to be flagged as
+         * deleted
+         * \return Checkpoint with ID of \a id if found or nullptr if not found
+         */
+        virtual checkpoint_type* findCheckpoint_(chkpt_id_t id) = 0;
+
+        /*!
+         * \brief Finds a checkpoint by its ID (const version)
+         */
+        virtual const checkpoint_type* findCheckpoint_(chkpt_id_t id) const = 0;
+
+        /*!
+         * \brief Remove the checkpoint from the backing store
+         */
+        virtual void deleteCheckpoint_(chkpt_id_t id) = 0;
 
         /*!
          * \brief Snapshot generation threshold. Every n checkpoints in a chain
