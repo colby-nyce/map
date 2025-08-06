@@ -47,7 +47,8 @@ std::unique_ptr<simdb::pipeline::Pipeline> DatabaseFastCheckpointer::createPipel
     // Task 1: Buffer snapshots and their deltas into checkpoint windows
     using ChkptCloneUPtr = std::unique_ptr<checkpoint_clone>;
     const auto window_len = getSnapshotThreshold();
-    auto create_window = simdb::pipeline::createTask<simdb::pipeline::Buffer<ChkptCloneUPtr>>(window_len);
+    const auto flush_partial = true;
+    auto create_window = simdb::pipeline::createTask<simdb::pipeline::Buffer<ChkptCloneUPtr>>(window_len, flush_partial);
 
     // Task 2: Add the IDs of all checkpoints in this window
     using ChkptCloneUPtrs = std::vector<ChkptCloneUPtr>;
@@ -137,7 +138,10 @@ std::unique_ptr<simdb::pipeline::Pipeline> DatabaseFastCheckpointer::createPipel
     auto evict_from_cache = simdb::pipeline::createTask<simdb::pipeline::Function<EvictedChkptIDs, void>>(
         [this](EvictedChkptIDs&& evicted_ids, bool) mutable
         {
-            (void)evicted_ids;
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto id : evicted_ids) {
+                chkpts_cache_.erase(id);
+            }
         }
     );
 
