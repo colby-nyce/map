@@ -1,0 +1,9 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classsparta_1_1TreeNode_1_1ExtensionsBase.html" title="Base class used to extend TreeNode parameter sets." alt="" coords="5,31,225,56"/>
+<area shape="rect" id="Node000001" href="$classsparta_1_1ExtensionsParamsOnly.html" title="Helper class used to trivially extend TreeNode parameter sets (but not any additional functionality b..." alt="" coords="273,31,470,56"/>
+<area shape="poly" id="edge287_Node000000_Node000001" title=" " alt="" coords="240,41,272,41,272,46,240,46"/>
+<area shape="rect" id="Node000002" href="$classCircleExtensions.html" title=" " alt="" coords="546,5,664,31"/>
+<area shape="poly" id="edge288_Node000001_Node000002" title=" " alt="" coords="485,29,546,22,547,27,485,34"/>
+<area shape="rect" id="Node000003" href="$classNeverExplicitlyInstantiated.html" title=" " alt="" coords="518,55,692,80"/>
+<area shape="poly" id="edge289_Node000001_Node000003" title=" " alt="" coords="486,53,518,56,517,61,485,58"/>
+</map>

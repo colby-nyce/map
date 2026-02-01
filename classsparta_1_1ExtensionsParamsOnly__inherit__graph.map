@@ -1,0 +1,9 @@
+<map id="sparta::ExtensionsParamsOnly" name="sparta::ExtensionsParamsOnly">
+<area shape="rect" id="Node000001" title="Helper class used to trivially extend TreeNode parameter sets (but not any additional functionality b..." alt="" coords="49,79,247,105"/>
+<area shape="rect" id="Node000003" href="$classCircleExtensions.html" title=" " alt="" coords="5,153,123,178"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="124,117,80,154,76,150,121,113"/>
+<area shape="rect" id="Node000004" href="$classNeverExplicitlyInstantiated.html" title=" " alt="" coords="146,153,320,178"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="176,113,221,150,217,154,172,117"/>
+<area shape="rect" id="Node000002" href="$classsparta_1_1TreeNode_1_1ExtensionsBase.html" title="Base class used to extend TreeNode parameter sets." alt="" coords="38,5,258,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="151,46,151,79,145,79,145,46"/>
+</map>
